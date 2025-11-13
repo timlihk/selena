@@ -4,12 +4,44 @@ require('dotenv').config();
 // Database connection configuration
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Add connection timeout and retry settings
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 20
 });
+
+// Test database connection
+async function testConnection() {
+  try {
+    console.log('🔌 Testing database connection...');
+    console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+
+    const client = await pool.connect();
+    const result = await client.query('SELECT NOW() as current_time');
+    console.log('✅ Database connection successful:', result.rows[0].current_time);
+    client.release();
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    console.error('Full error:', error);
+    return false;
+  }
+}
 
 // Initialize database tables
 async function initializeDatabase() {
   try {
+    // Test connection first
+    const connected = await testConnection();
+    if (!connected) {
+      throw new Error('Cannot initialize database - connection failed');
+    }
+
     const client = await pool.connect();
 
     // Create events table if it doesn't exist
@@ -25,7 +57,8 @@ async function initializeDatabase() {
     console.log('✅ Database initialized successfully');
     client.release();
   } catch (error) {
-    console.error('❌ Database initialization error:', error);
+    console.error('❌ Database initialization error:', error.message);
+    throw error; // Re-throw to stop server startup
   }
 }
 
@@ -108,5 +141,6 @@ const Event = {
 module.exports = {
   pool,
   initializeDatabase,
-  Event
+  Event,
+  testConnection
 };

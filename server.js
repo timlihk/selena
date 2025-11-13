@@ -74,8 +74,27 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Baby Tracker API is running' });
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    const { testConnection } = require('./database');
+    const dbConnected = await testConnection();
+
+    res.json({
+      status: dbConnected ? 'OK' : 'ERROR',
+      message: 'Baby Tracker API is running',
+      database: dbConnected ? 'Connected' : 'Disconnected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: 'Health check failed',
+      database: 'Error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Initialize database and start server
