@@ -156,6 +156,20 @@ app.post('/api/events', async (req, res) => {
       if (type === 'milk' && (isNaN(calculatedAmount) || calculatedAmount <= 0)) {
         return res.status(400).json({ error: 'Milk amount must be a valid positive number' });
       }
+
+      // Check if there's an incomplete sleep event for this user
+      // If so, automatically complete it with the current time as wake up time
+      const incompleteSleep = await Event.getLastIncompleteSleep(userName);
+      if (incompleteSleep) {
+        const sleepEnd = new Date().toISOString();
+        const sleepStart = incompleteSleep.sleep_start_time;
+        const duration = Math.round((new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)); // minutes
+        const sleepAmount = duration > 0 ? duration : 1;
+
+        // Update the incomplete sleep event with end time and duration
+        await Event.update(incompleteSleep.id, 'sleep', sleepAmount, sleepStart, sleepEnd);
+        console.log(`Auto-completed sleep event ${incompleteSleep.id} with ${type} event`);
+      }
     }
 
     console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd });
