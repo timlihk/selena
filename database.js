@@ -4,9 +4,9 @@ require('dotenv').config();
 // Database connection configuration
 let pool;
 
-if (process.env.NODE_ENV === 'development' && !process.env.DATABASE_URL) {
-  // For development without database, use in-memory storage
-  console.log('⚠️  Running in development mode without database - using in-memory storage');
+if (!process.env.DATABASE_URL) {
+  // For environments without database URL, use in-memory storage
+  console.log('⚠️  No DATABASE_URL found - using in-memory storage');
   pool = null;
 } else {
   pool = new Pool({
@@ -26,7 +26,7 @@ async function testConnection() {
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 
     if (pool === null) {
-      console.log('✅ Development mode - using in-memory storage');
+      console.log('✅ No DATABASE_URL - using in-memory storage');
       return true;
     }
 
@@ -59,7 +59,7 @@ async function initializeDatabase() {
     }
 
     if (pool === null) {
-      console.log('✅ Development mode - in-memory storage ready');
+      console.log('✅ No DATABASE_URL - in-memory storage ready');
       return;
     }
 
