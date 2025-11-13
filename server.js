@@ -59,8 +59,8 @@ app.post('/api/events', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user' });
     }
 
-    if (type === 'milk' && (!amount || amount <= 0)) {
-      return res.status(400).json({ error: 'Milk amount is required and must be positive' });
+    if (type === 'milk' && (!amount || isNaN(amount) || amount <= 0)) {
+      return res.status(400).json({ error: 'Milk amount is required and must be a positive number' });
     }
 
     // Handle sleep events with fall asleep/wake up tracking
@@ -103,6 +103,10 @@ app.post('/api/events', async (req, res) => {
       }
     } else {
       calculatedAmount = type === 'milk' ? parseInt(amount) : null;
+      // Additional validation after parsing for milk events
+      if (type === 'milk' && (isNaN(calculatedAmount) || calculatedAmount <= 0)) {
+        return res.status(400).json({ error: 'Milk amount must be a valid positive number' });
+      }
     }
 
     console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd });

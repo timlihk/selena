@@ -85,8 +85,8 @@ class BabyTracker {
             return;
         }
 
-        if (eventType === 'milk' && !milkAmount) {
-            alert('Please enter milk amount');
+        if (eventType === 'milk' && (!milkAmount || isNaN(parseInt(milkAmount)) || parseInt(milkAmount) <= 0)) {
+            alert('Please enter a valid milk amount (positive number)');
             return;
         }
 
@@ -97,21 +97,31 @@ class BabyTracker {
         }
 
         try {
+            const requestData = {
+                type: eventType,
+                amount: eventType === 'milk' ? parseInt(milkAmount, 10) : null,
+                userName: userName
+            };
+            console.log('Sending event creation request:', requestData);
+
             const response = await fetch('/api/events', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    type: eventType,
-                    amount: eventType === 'milk' ? parseInt(milkAmount) : null,
-                    userName: userName
-                })
+                body: JSON.stringify(requestData)
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to add event');
+                let errorMessage = 'Failed to add event';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (jsonError) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                }
+                throw new Error(errorMessage);
             }
 
             await this.loadEvents();
@@ -146,8 +156,15 @@ class BabyTracker {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to add sleep event');
+                let errorMessage = 'Failed to add sleep event';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (jsonError) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                }
+                throw new Error(errorMessage);
             }
 
             await this.loadEvents();
@@ -471,8 +488,15 @@ class BabyTracker {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to update event');
+                let errorMessage = 'Failed to update event';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (jsonError) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                }
+                throw new Error(errorMessage);
             }
 
             await this.loadEvents();
