@@ -43,9 +43,12 @@
                     <input type="number" id="milkAmount" name="milkAmount" min="0" max="500" placeholder="Enter ml">
                 </div>
 
-                <div class="form-group" id="sleepDurationGroup" style="display: none;">
-                    <label for="sleepDuration">Sleep Duration (minutes):</label>
-                    <input type="number" id="sleepDuration" name="sleepDuration" min="1" max="480" placeholder="Enter minutes">
+                <div class="form-group" id="sleepTrackingGroup" style="display: none;">
+                    <label>Sleep Tracking:</label>
+                    <div class="sleep-buttons">
+                        <button type="button" id="fallAsleepBtn" class="btn-sleep btn-fall-asleep">😴 Fall Asleep</button>
+                        <button type="button" id="wakeUpBtn" class="btn-sleep btn-wake-up">☀️ Wake Up</button>
+                    </div>
                 </div>
 
                 <button type="submit" class="btn-primary">Add Event</button>

@@ -40,7 +40,7 @@ app.get('/api/events', async (req, res) => {
 // Create a new event
 app.post('/api/events', async (req, res) => {
   try {
-    const { type, amount, userName } = req.body;
+    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime } = req.body;
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
@@ -62,11 +62,49 @@ app.post('/api/events', async (req, res) => {
       return res.status(400).json({ error: 'Milk amount is required and must be positive' });
     }
 
-    if (type === 'sleep' && (!amount || amount <= 0)) {
-      return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+    // Handle sleep events with fall asleep/wake up tracking
+    let calculatedAmount = null;
+    let sleepStart = null;
+    let sleepEnd = null;
+
+    if (type === 'sleep') {
+      if (sleepSubType === 'fall_asleep') {
+        sleepStart = new Date().toISOString();
+      } else if (sleepSubType === 'wake_up') {
+        sleepEnd = new Date().toISOString();
+
+        // Find the most recent fall asleep event for this user
+        const events = await Event.getAll();
+        const lastFallAsleep = events.find(event =>
+          event.type === 'sleep' &&
+          event.user_name === userName &&
+          event.sleep_start_time &&
+          !event.sleep_end_time
+        );
+
+        if (lastFallAsleep) {
+          sleepStart = lastFallAsleep.sleep_start_time;
+          const duration = Math.round((new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)); // minutes
+          calculatedAmount = duration > 0 ? duration : 1;
+
+          // Update the fall asleep event with end time and duration
+          await Event.update(lastFallAsleep.id, 'sleep', calculatedAmount, sleepStart, sleepEnd);
+          return res.status(201).json({ ...lastFallAsleep, amount: calculatedAmount, sleep_end_time: sleepEnd });
+        } else {
+          return res.status(400).json({ error: 'No fall asleep event found to complete sleep session' });
+        }
+      } else {
+        // Legacy sleep event with manual duration
+        if (!amount || amount <= 0) {
+          return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+        }
+        calculatedAmount = parseInt(amount);
+      }
+    } else {
+      calculatedAmount = type === 'milk' ? parseInt(amount) : null;
     }
 
-    const event = await Event.create(type, (type === 'milk' || type === 'sleep') ? parseInt(amount) : null, userName);
+    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd);
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);

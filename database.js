@@ -72,7 +72,9 @@ async function initializeDatabase() {
           type VARCHAR(20) NOT NULL,
           amount INTEGER,
           user_name VARCHAR(50) NOT NULL,
-          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          sleep_start_time TIMESTAMP,
+          sleep_end_time TIMESTAMP
         )
       `);
 
@@ -159,7 +161,7 @@ const Event = {
   },
 
   // Create a new event
-  async create(type, amount = null, userName = 'Unknown') {
+  async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null) {
     try {
       if (pool === null) {
         // In-memory mode
@@ -168,15 +170,17 @@ const Event = {
           type,
           amount,
           user_name: userName,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          sleep_start_time: sleepStartTime,
+          sleep_end_time: sleepEndTime
         };
         memoryEvents.push(event);
         return event;
       }
 
       const result = await pool.query(
-        'INSERT INTO baby_events (type, amount, user_name) VALUES ($1, $2, $3) RETURNING *',
-        [type, amount, userName]
+        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [type, amount, userName, sleepStartTime, sleepEndTime]
       );
       return result.rows[0];
     } catch (error) {
@@ -266,7 +270,7 @@ const Event = {
   },
 
   // Update an event
-  async update(id, type, amount = null) {
+  async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null) {
     try {
       if (pool === null) {
         // In-memory mode
@@ -277,12 +281,14 @@ const Event = {
         event.type = type;
         event.amount = amount;
         event.timestamp = new Date().toISOString();
+        if (sleepStartTime !== undefined) event.sleep_start_time = sleepStartTime;
+        if (sleepEndTime !== undefined) event.sleep_end_time = sleepEndTime;
         return event;
       }
 
       const result = await pool.query(
-        'UPDATE baby_events SET type = $1, amount = $2 WHERE id = $3 RETURNING *',
-        [type, amount, id]
+        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $4, sleep_end_time = $5 WHERE id = $3 RETURNING *',
+        [type, amount, id, sleepStartTime, sleepEndTime]
       );
 
       if (result.rows.length === 0) {

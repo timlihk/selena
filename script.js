@@ -14,7 +14,9 @@ class BabyTracker {
         const eventForm = document.getElementById('eventForm');
         const eventType = document.getElementById('eventType');
         const milkAmountGroup = document.getElementById('milkAmountGroup');
-        const sleepDurationGroup = document.getElementById('sleepDurationGroup');
+        const sleepTrackingGroup = document.getElementById('sleepTrackingGroup');
+        const fallAsleepBtn = document.getElementById('fallAsleepBtn');
+        const wakeUpBtn = document.getElementById('wakeUpBtn');
         const dateFilter = document.getElementById('dateFilter');
         const customDateRange = document.getElementById('customDateRange');
         const applyCustomRange = document.getElementById('applyCustomRange');
@@ -25,7 +27,16 @@ class BabyTracker {
         eventType.addEventListener('change', (e) => {
             const selectedType = e.target.value;
             milkAmountGroup.style.display = selectedType === 'milk' ? 'block' : 'none';
-            sleepDurationGroup.style.display = selectedType === 'sleep' ? 'block' : 'none';
+            sleepTrackingGroup.style.display = selectedType === 'sleep' ? 'block' : 'none';
+        });
+
+        // Sleep button handlers
+        fallAsleepBtn.addEventListener('click', () => {
+            this.addSleepEvent('fall_asleep');
+        });
+
+        wakeUpBtn.addEventListener('click', () => {
+            this.addSleepEvent('wake_up');
         });
 
         // Handle form submission
@@ -62,7 +73,6 @@ class BabyTracker {
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
-        const sleepDuration = document.getElementById('sleepDuration').value;
         const userName = document.getElementById('userName').value;
 
         if (!userName) {
@@ -80,8 +90,9 @@ class BabyTracker {
             return;
         }
 
-        if (eventType === 'sleep' && !sleepDuration) {
-            alert('Please enter sleep duration');
+        // Skip sleep events in the main form - they're handled by the sleep buttons
+        if (eventType === 'sleep') {
+            alert('Please use the "Fall Asleep" or "Wake Up" buttons for sleep tracking');
             return;
         }
 
@@ -93,8 +104,7 @@ class BabyTracker {
                 },
                 body: JSON.stringify({
                     type: eventType,
-                    amount: (eventType === 'milk' || eventType === 'sleep') ?
-                        (eventType === 'milk' ? parseInt(milkAmount) : parseInt(sleepDuration)) : null,
+                    amount: eventType === 'milk' ? parseInt(milkAmount) : null,
                     userName: userName
                 })
             });
@@ -113,10 +123,52 @@ class BabyTracker {
         }
     }
 
+    // Add sleep event with fall asleep/wake up tracking
+    async addSleepEvent(sleepSubType) {
+        const userName = document.getElementById('userName').value;
+
+        if (!userName) {
+            alert('Please select who is recording');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/events', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'sleep',
+                    sleepSubType: sleepSubType,
+                    userName: userName
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to add sleep event');
+            }
+
+            await this.loadEvents();
+            await this.updateStats();
+
+            // Show success message
+            if (sleepSubType === 'fall_asleep') {
+                alert('😴 Fall asleep recorded! Don\'t forget to record wake up when baby wakes.');
+            } else if (sleepSubType === 'wake_up') {
+                alert('☀️ Wake up recorded! Sleep duration calculated automatically.');
+            }
+        } catch (error) {
+            console.error('Error adding sleep event:', error);
+            alert('Failed to add sleep event: ' + error.message);
+        }
+    }
+
     resetForm() {
         document.getElementById('eventForm').reset();
         document.getElementById('milkAmountGroup').style.display = 'none';
-        document.getElementById('sleepDurationGroup').style.display = 'none';
+        document.getElementById('sleepTrackingGroup').style.display = 'none';
     }
 
     async loadEvents() {
