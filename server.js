@@ -111,6 +111,7 @@ app.post('/api/events', async (req, res) => {
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to create event' });
   }
 });
