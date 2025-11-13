@@ -8,6 +8,8 @@ const { initializeDatabase, Event } = require('./database');
 // Input validation constants
 const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'bath', 'sleep'];
 const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
+const MAX_FILTER_LENGTH = 1000;
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,18 +39,29 @@ app.use(cors(corsOptions)); // CORS with proper configuration
 app.use(express.json({ limit: '10kb' })); // Body parser with size limit
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(limiter); // Rate limiting
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(PUBLIC_DIR));
 
-// API Routes
-
-// Get all events
-app.get('/api/events', async (req, res) => {
+async function getEventsHandler(req, res) {
   try {
     const { filter } = req.query;
     let events;
 
     if (filter) {
-      const filterData = JSON.parse(filter);
+      if (typeof filter !== 'string') {
+        return res.status(400).json({ error: 'Invalid filter format' });
+      }
+
+      if (filter.length > MAX_FILTER_LENGTH) {
+        return res.status(400).json({ error: 'Filter parameter is too long' });
+      }
+
+      let filterData;
+      try {
+        filterData = JSON.parse(filter);
+      } catch (parseError) {
+        return res.status(400).json({ error: 'Invalid filter format' });
+      }
+
       events = await Event.getFiltered(filterData);
     } else {
       events = await Event.getAll();
@@ -59,7 +72,12 @@ app.get('/api/events', async (req, res) => {
     console.error('Error fetching events:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
   }
-});
+}
+
+// API Routes
+
+// Get all events
+app.get('/api/events', getEventsHandler);
 
 // Create a new event
 app.post('/api/events', async (req, res) => {
@@ -167,10 +185,16 @@ app.delete('/api/events/:id', async (req, res) => {
 });
 
 // Update an event
-app.put('/api/events/:id', async (req, res) => {
+async function updateEventHandler(req, res) {
   try {
     const { id } = req.params;
     const { type, amount } = req.body;
+
+    const eventId = parseInt(id, 10);
+
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
@@ -180,15 +204,38 @@ app.put('/api/events/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid event type' });
     }
 
-    if (type === 'milk' && (!amount || amount <= 0)) {
-      return res.status(400).json({ error: 'Milk amount is required and must be positive' });
+    const existingEvent = await Event.getById(eventId);
+    if (!existingEvent) {
+      return res.status(404).json({ error: 'Event not found' });
     }
 
-    if (type === 'sleep' && (!amount || amount <= 0)) {
-      return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+    let normalizedAmount = null;
+
+    if (type === 'milk') {
+      const parsedAmount = parseInt(amount, 10);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ error: 'Milk amount is required and must be a valid positive number' });
+      }
+      normalizedAmount = parsedAmount;
+    } else if (type === 'sleep') {
+      const parsedAmount = parseInt(amount, 10);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ error: 'Sleep duration is required and must be a valid positive number' });
+      }
+      normalizedAmount = parsedAmount;
     }
 
-    const event = await Event.update(parseInt(id), type, (type === 'milk' || type === 'sleep') ? parseInt(amount) : null);
+    const preserveSleepTimestamps = type === 'sleep';
+    const existingSleepStart = existingEvent.sleep_start_time ?? existingEvent.sleepStartTime ?? null;
+    const existingSleepEnd = existingEvent.sleep_end_time ?? existingEvent.sleepEndTime ?? null;
+
+    const event = await Event.update(
+      eventId,
+      type,
+      normalizedAmount,
+      preserveSleepTimestamps ? existingSleepStart : null,
+      preserveSleepTimestamps ? existingSleepEnd : null
+    );
     res.json(event);
   } catch (error) {
     console.error('Error updating event:', error);
@@ -198,11 +245,13 @@ app.put('/api/events/:id', async (req, res) => {
       res.status(500).json({ error: 'Failed to update event' });
     }
   }
-});
+}
+
+app.put('/api/events/:id', updateEventHandler);
 
 // Serve the main page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // Health check endpoint
@@ -245,4 +294,13 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  startServer,
+  getEventsHandler,
+  updateEventHandler
+};

@@ -136,8 +136,33 @@ async function initializeDatabase() {
 let memoryEvents = [];
 let nextId = 1;
 
+function resetMemoryStore() {
+  if (pool === null) {
+    memoryEvents = [];
+    nextId = 1;
+  }
+}
+
 // Event operations
 const Event = {
+  // Get event by ID
+  async getById(id) {
+    try {
+      if (pool === null) {
+        return memoryEvents.find(event => event.id === parseInt(id));
+      }
+
+      const result = await pool.query(
+        'SELECT * FROM baby_events WHERE id = $1 LIMIT 1',
+        [id]
+      );
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('Error getting event by id:', error);
+      throw error;
+    }
+  },
+
   // Get all events
   async getAll() {
     try {
@@ -392,5 +417,6 @@ module.exports = {
   pool,
   initializeDatabase,
   Event,
-  testConnection
+  testConnection,
+  resetMemoryStore
 };

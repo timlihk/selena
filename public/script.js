@@ -539,32 +539,37 @@ class BabyTracker {
         try {
             let filter = {};
             const today = new Date();
+            const todayString = this.formatLocalDate(today);
 
             switch (filterType) {
-                case 'today':
-                    filter.startDate = today.toISOString().split('T')[0];
-                    filter.endDate = today.toISOString().split('T')[0];
+                case 'today': {
+                    filter.startDate = todayString;
+                    filter.endDate = todayString;
                     break;
-                case 'yesterday':
+                }
+                case 'yesterday': {
                     const yesterday = new Date(today);
                     yesterday.setDate(yesterday.getDate() - 1);
-                    filter.startDate = yesterday.toISOString().split('T')[0];
-                    filter.endDate = yesterday.toISOString().split('T')[0];
+                    const formatted = this.formatLocalDate(yesterday);
+                    filter.startDate = formatted;
+                    filter.endDate = formatted;
                     break;
-                case 'last7':
-                    const last7 = new Date(today);
-                    last7.setDate(last7.getDate() - 7);
-                    filter.startDate = last7.toISOString().split('T')[0];
-                    filter.endDate = today.toISOString().split('T')[0];
+                }
+                case 'last7': {
+                    const start = new Date(today);
+                    start.setDate(start.getDate() - 6);
+                    filter.startDate = this.formatLocalDate(start);
+                    filter.endDate = todayString;
                     break;
-                case 'last30':
-                    const last30 = new Date(today);
-                    last30.setDate(last30.getDate() - 30);
-                    filter.startDate = last30.toISOString().split('T')[0];
-                    filter.endDate = today.toISOString().split('T')[0];
+                }
+                case 'last30': {
+                    const start = new Date(today);
+                    start.setDate(start.getDate() - 29);
+                    filter.startDate = this.formatLocalDate(start);
+                    filter.endDate = todayString;
                     break;
+                }
                 case 'all':
-                    // No filter - load all events
                     await this.loadEvents();
                     return;
                 default:
@@ -704,6 +709,13 @@ class BabyTracker {
         `);
         printWindow.document.close();
         printWindow.print();
+    }
+
+    formatLocalDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
 }
