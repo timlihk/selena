@@ -68,6 +68,32 @@ app.delete('/api/events/:id', async (req, res) => {
   }
 });
 
+// Update an event
+app.put('/api/events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, amount } = req.body;
+
+    if (!type) {
+      return res.status(400).json({ error: 'Event type is required' });
+    }
+
+    if (type === 'milk' && (!amount || amount <= 0)) {
+      return res.status(400).json({ error: 'Milk amount is required and must be positive' });
+    }
+
+    const event = await Event.update(parseInt(id), type, type === 'milk' ? parseInt(amount) : null);
+    res.json(event);
+  } catch (error) {
+    console.error('Error updating event:', error);
+    if (error.message === 'Event not found') {
+      res.status(404).json({ error: 'Event not found' });
+    } else {
+      res.status(500).json({ error: 'Failed to update event' });
+    }
+  }
+});
+
 // Serve the main page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

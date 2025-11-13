@@ -2,20 +2,33 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // Database connection configuration
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  // Add connection timeout and retry settings
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 20
-});
+let pool;
+
+if (process.env.NODE_ENV === 'development' && !process.env.DATABASE_URL) {
+  // For development without database, use in-memory storage
+  console.log('⚠️  Running in development mode without database - using in-memory storage');
+  pool = null;
+} else {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    // Add connection timeout and retry settings
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    max: 20
+  });
+}
 
 // Test database connection
 async function testConnection() {
   try {
     console.log('🔌 Testing database connection...');
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+
+    if (pool === null) {
+      console.log('✅ Development mode - using in-memory storage');
+      return true;
+    }
 
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL environment variable is not set');
@@ -42,6 +55,11 @@ async function initializeDatabase() {
       throw new Error('Cannot initialize database - connection failed');
     }
 
+    if (pool === null) {
+      console.log('✅ Development mode - in-memory storage ready');
+      return;
+    }
+
     const client = await pool.connect();
 
     // Create events table if it doesn't exist
@@ -62,11 +80,20 @@ async function initializeDatabase() {
   }
 }
 
+// In-memory storage for development
+let memoryEvents = [];
+let nextId = 1;
+
 // Event operations
 const Event = {
   // Get all events
   async getAll() {
     try {
+      if (pool === null) {
+        // In-memory mode
+        return memoryEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      }
+
       const result = await pool.query(
         'SELECT * FROM baby_events ORDER BY timestamp DESC'
       );
@@ -80,6 +107,18 @@ const Event = {
   // Create a new event
   async create(type, amount = null) {
     try {
+      if (pool === null) {
+        // In-memory mode
+        const event = {
+          id: nextId++,
+          type,
+          amount,
+          timestamp: new Date().toISOString()
+        };
+        memoryEvents.push(event);
+        return event;
+      }
+
       const result = await pool.query(
         'INSERT INTO baby_events (type, amount) VALUES ($1, $2) RETURNING *',
         [type, amount]
@@ -94,6 +133,30 @@ const Event = {
   // Get today's events
   async getTodayStats() {
     try {
+      if (pool === null) {
+        // In-memory mode
+        const today = new Date().toISOString().split('T')[0];
+        const todayEvents = memoryEvents.filter(event =>
+          event.timestamp.split('T')[0] === today
+        );
+
+        const stats = {
+          milk: 0,
+          poo: 0,
+          bath: 0,
+          totalMilk: 0
+        };
+
+        todayEvents.forEach(event => {
+          stats[event.type] = (stats[event.type] || 0) + 1;
+          if (event.type === 'milk' && event.amount) {
+            stats.totalMilk += event.amount;
+          }
+        });
+
+        return stats;
+      }
+
       const result = await pool.query(`
         SELECT
           type,
@@ -129,10 +192,51 @@ const Event = {
   // Delete an event
   async delete(id) {
     try {
+      if (pool === null) {
+        // In-memory mode
+        const index = memoryEvents.findIndex(event => event.id === parseInt(id));
+        if (index === -1) {
+          throw new Error('Event not found');
+        }
+        memoryEvents.splice(index, 1);
+        return true;
+      }
+
       await pool.query('DELETE FROM baby_events WHERE id = $1', [id]);
       return true;
     } catch (error) {
       console.error('Error deleting event:', error);
+      throw error;
+    }
+  },
+
+  // Update an event
+  async update(id, type, amount = null) {
+    try {
+      if (pool === null) {
+        // In-memory mode
+        const event = memoryEvents.find(event => event.id === parseInt(id));
+        if (!event) {
+          throw new Error('Event not found');
+        }
+        event.type = type;
+        event.amount = amount;
+        event.timestamp = new Date().toISOString();
+        return event;
+      }
+
+      const result = await pool.query(
+        'UPDATE baby_events SET type = $1, amount = $2 WHERE id = $3 RETURNING *',
+        [type, amount, id]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Event not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error updating event:', error);
       throw error;
     }
   }

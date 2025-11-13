@@ -122,7 +122,7 @@ class BabyTracker {
         });
 
         return `
-            <div class="event-item">
+            <div class="event-item" data-event-id="${event.id}">
                 <div class="event-info">
                     <span class="event-icon">${icons[event.type]}</span>
                     <div class="event-details">
@@ -130,7 +130,11 @@ class BabyTracker {
                         <span class="event-time">${eventTime}</span>
                     </div>
                 </div>
-                ${event.amount ? `<span class="event-amount">${event.amount}ml</span>` : ''}
+                <div class="event-actions">
+                    ${event.amount ? `<span class="event-amount">${event.amount}ml</span>` : ''}
+                    <button class="btn-edit" onclick="babyTracker.editEvent(${event.id})" title="Edit event">✏️</button>
+                    <button class="btn-remove" onclick="babyTracker.removeEvent(${event.id})" title="Remove event">🗑️</button>
+                </div>
             </div>
         `;
     }
@@ -151,6 +155,78 @@ class BabyTracker {
             document.getElementById('milkCount').textContent = '0';
             document.getElementById('pooCount').textContent = '0';
             document.getElementById('bathCount').textContent = '0';
+        }
+    }
+
+    // Remove a single event
+    async removeEvent(eventId) {
+        if (confirm('Are you sure you want to remove this event?')) {
+            try {
+                const response = await fetch(`/api/events/${eventId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to remove event');
+                }
+
+                await this.loadEvents();
+                await this.updateStats();
+            } catch (error) {
+                console.error('Error removing event:', error);
+                alert('Failed to remove event');
+            }
+        }
+    }
+
+    // Edit an event
+    async editEvent(eventId) {
+        const event = this.events.find(e => e.id === eventId);
+        if (!event) return;
+
+        // Create a simple edit form
+        const newType = prompt('Edit event type (milk, poo, bath):', event.type);
+        if (newType === null) return; // User cancelled
+
+        if (!['milk', 'poo', 'bath'].includes(newType)) {
+            alert('Invalid event type. Please use: milk, poo, or bath');
+            return;
+        }
+
+        let newAmount = null;
+        if (newType === 'milk') {
+            newAmount = prompt('Enter milk amount (ml):', event.amount || '');
+            if (newAmount === null) return; // User cancelled
+
+            if (!newAmount || isNaN(newAmount) || parseInt(newAmount) <= 0) {
+                alert('Please enter a valid milk amount');
+                return;
+            }
+            newAmount = parseInt(newAmount);
+        }
+
+        try {
+            const response = await fetch(`/api/events/${eventId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: newType,
+                    amount: newAmount
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to update event');
+            }
+
+            await this.loadEvents();
+            await this.updateStats();
+        } catch (error) {
+            console.error('Error updating event:', error);
+            alert('Failed to update event: ' + error.message);
         }
     }
 
