@@ -251,8 +251,9 @@ class BabyTracker {
 }
 
 // Initialize the tracker when the page loads
+let babyTracker;
 document.addEventListener('DOMContentLoaded', () => {
-    new BabyTracker();
+    babyTracker = new BabyTracker();
 });
 
 // Add clear button for development (optional)
