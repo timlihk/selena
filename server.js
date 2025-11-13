@@ -36,17 +36,21 @@ app.get('/api/events', async (req, res) => {
 // Create a new event
 app.post('/api/events', async (req, res) => {
   try {
-    const { type, amount } = req.body;
+    const { type, amount, userName } = req.body;
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
+    }
+
+    if (!userName) {
+      return res.status(400).json({ error: 'User name is required' });
     }
 
     if (type === 'milk' && (!amount || amount <= 0)) {
       return res.status(400).json({ error: 'Milk amount is required and must be positive' });
     }
 
-    const event = await Event.create(type, type === 'milk' ? parseInt(amount) : null);
+    const event = await Event.create(type, type === 'milk' ? parseInt(amount) : null, userName);
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);

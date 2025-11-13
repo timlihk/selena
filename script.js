@@ -63,6 +63,12 @@ class BabyTracker {
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
+        const userName = document.getElementById('userName').value;
+
+        if (!userName) {
+            alert('Please select who is recording');
+            return;
+        }
 
         if (!eventType) {
             alert('Please select an event type');
@@ -82,7 +88,8 @@ class BabyTracker {
                 },
                 body: JSON.stringify({
                     type: eventType,
-                    amount: eventType === 'milk' ? parseInt(milkAmount) : null
+                    amount: eventType === 'milk' ? parseInt(milkAmount) : null,
+                    userName: userName
                 })
             });
 
@@ -157,6 +164,7 @@ class BabyTracker {
                     <div class="event-details">
                         <span class="event-type">${labels[event.type]}</span>
                         <span class="event-time">${eventTime}</span>
+                        <span class="event-user">👤 ${event.user_name}</span>
                     </div>
                 </div>
                 <div class="event-actions">
@@ -401,12 +409,13 @@ class BabyTracker {
             return;
         }
 
-        const headers = ['Type', 'Amount (ml)', 'Date', 'Time'];
+        const headers = ['Type', 'Amount (ml)', 'User', 'Date', 'Time'];
         const csvData = this.events.map(event => {
             const date = new Date(event.timestamp);
             return [
                 event.type,
                 event.amount || '',
+                event.user_name,
                 date.toLocaleDateString(),
                 date.toLocaleTimeString()
             ];
@@ -455,6 +464,7 @@ class BabyTracker {
                             <tr>
                                 <th>Type</th>
                                 <th>Amount (ml)</th>
+                                <th>User</th>
                                 <th>Date</th>
                                 <th>Time</th>
                             </tr>
@@ -466,6 +476,7 @@ class BabyTracker {
                                     <tr>
                                         <td>${event.type}</td>
                                         <td>${event.amount || ''}</td>
+                                        <td>${event.user_name}</td>
                                         <td>${date.toLocaleDateString()}</td>
                                         <td>${date.toLocaleTimeString()}</td>
                                     </tr>

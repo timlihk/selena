@@ -148,6 +148,13 @@ header p {
     color: #718096;
 }
 
+.event-user {
+    font-size: 0.8rem;
+    color: #38a169;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
 .event-amount {
     background: #667eea;
     color: white;

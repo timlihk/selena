@@ -68,6 +68,7 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         type VARCHAR(20) NOT NULL,
         amount INTEGER,
+        user_name VARCHAR(50) NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -153,7 +154,7 @@ const Event = {
   },
 
   // Create a new event
-  async create(type, amount = null) {
+  async create(type, amount = null, userName = 'Unknown') {
     try {
       if (pool === null) {
         // In-memory mode
@@ -161,6 +162,7 @@ const Event = {
           id: nextId++,
           type,
           amount,
+          user_name: userName,
           timestamp: new Date().toISOString()
         };
         memoryEvents.push(event);
@@ -168,8 +170,8 @@ const Event = {
       }
 
       const result = await pool.query(
-        'INSERT INTO baby_events (type, amount) VALUES ($1, $2) RETURNING *',
-        [type, amount]
+        'INSERT INTO baby_events (type, amount, user_name) VALUES ($1, $2, $3) RETURNING *',
+        [type, amount, userName]
       );
       return result.rows[0];
     } catch (error) {
