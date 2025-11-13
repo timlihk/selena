@@ -280,15 +280,23 @@ const Event = {
           milk: 0,
           poo: 0,
           bath: 0,
-          totalMilk: 0
+          totalMilk: 0,
+          totalSleepHours: 0
         };
+
+        let totalSleepMinutes = 0;
 
         todayEvents.forEach(event => {
           stats[event.type] = (stats[event.type] || 0) + 1;
           if (event.type === 'milk' && event.amount) {
             stats.totalMilk += event.amount;
           }
+          if (event.type === 'sleep' && event.amount) {
+            totalSleepMinutes += event.amount;
+          }
         });
+
+        stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10;
 
         return stats;
       }
@@ -297,7 +305,8 @@ const Event = {
         SELECT
           type,
           COUNT(*) as count,
-          SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END) as total_milk
+          SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END) as total_milk,
+          SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END) as total_sleep_minutes
         FROM baby_events
         WHERE DATE(timestamp) = CURRENT_DATE
         GROUP BY type
@@ -308,7 +317,8 @@ const Event = {
         milk: 0,
         poo: 0,
         bath: 0,
-        totalMilk: 0
+        totalMilk: 0,
+        totalSleepHours: 0
       };
 
       result.rows.forEach(row => {
@@ -317,6 +327,10 @@ const Event = {
           stats.totalMilk = parseInt(row.total_milk) || 0;
         }
       });
+
+      // Calculate total sleep hours from minutes
+      const totalSleepMinutes = result.rows.find(row => row.type === 'sleep')?.total_sleep_minutes || 0;
+      stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10; // Round to 1 decimal place
 
       return stats;
     } catch (error) {

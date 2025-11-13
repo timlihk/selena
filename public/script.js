@@ -323,12 +323,16 @@ class BabyTracker {
             document.getElementById('pooCount').textContent = stats.poo || 0;
             document.getElementById('bathCount').textContent = stats.bath || 0;
             document.getElementById('sleepCount').textContent = stats.sleep || 0;
+            document.getElementById('totalMilk').textContent = stats.totalMilk || 0;
+            document.getElementById('totalSleep').textContent = stats.totalSleepHours || 0;
         } catch (error) {
             console.error('Error loading stats:', error);
             document.getElementById('milkCount').textContent = '0';
             document.getElementById('pooCount').textContent = '0';
             document.getElementById('bathCount').textContent = '0';
             document.getElementById('sleepCount').textContent = '0';
+            document.getElementById('totalMilk').textContent = '0';
+            document.getElementById('totalSleep').textContent = '0';
         }
     }
 
