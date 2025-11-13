@@ -114,8 +114,13 @@ app.post('/api/events', async (req, res) => {
     console.log('Event created successfully:', event);
     res.status(201).json(event);
   } catch (error) {
-    console.error('Error creating event:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error creating event:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Environment info:', {
+      DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
+      NODE_ENV: process.env.NODE_ENV,
+      RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT
+    });
     res.status(500).json({ error: 'Failed to create event' });
   }
 });

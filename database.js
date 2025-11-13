@@ -9,9 +9,12 @@ if (!process.env.DATABASE_URL) {
   console.log('⚠️  No DATABASE_URL found - using in-memory storage');
   pool = null;
 } else {
+  // For Railway and other cloud platforms, always use SSL
+  const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
+
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? true : false,
+    ssl: sslConfig,
     // Add connection timeout and retry settings
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
@@ -184,11 +187,14 @@ const Event = {
       );
       return result.rows[0];
     } catch (error) {
-      console.error('Error creating event:', error);
-      console.error('Error details:', {
+      console.error('❌ Database error creating event:', error);
+      console.error('❌ Database error details:', {
         type, amount, userName, sleepStartTime, sleepEndTime,
         poolExists: pool !== null,
-        poolType: pool ? 'PostgreSQL' : 'In-memory'
+        poolType: pool ? 'PostgreSQL' : 'In-memory',
+        DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
+        NODE_ENV: process.env.NODE_ENV,
+        RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT
       });
       throw error;
     }
