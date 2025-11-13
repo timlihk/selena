@@ -221,50 +221,6 @@ class BabyTracker {
         });
     }
 
-    createEventHTML(event) {
-        const icons = {
-            milk: '🍼',
-            poo: '💩',
-            bath: '🛁',
-            sleep: '😴'
-        };
-
-        const labels = {
-            milk: 'Milk Feed',
-            poo: 'Diaper Change',
-            bath: 'Bath Time',
-            sleep: 'Sleep Session'
-        };
-
-        const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-
-        return `
-            <div class="event-item" data-event-id="${event.id}">
-                <div class="event-info">
-                    <span class="event-icon">${icons[event.type]}</span>
-                    <div class="event-details">
-                        <span class="event-type">${labels[event.type]}</span>
-                        <span class="event-time">${eventTime}</span>
-                        <span class="event-user">👤 ${event.user_name}</span>
-                    </div>
-                </div>
-                <div class="event-actions">
-                    ${event.amount ?
-                        (event.type === 'milk' ?
-                            `<span class="event-amount">${event.amount}ml</span>` :
-                            `<span class="event-amount">${event.amount}min</span>`)
-                        : ''}
-                    <button class="btn-edit" onclick="babyTracker.startInlineEdit(${event.id})" title="Edit event">✏️</button>
-                    <button class="btn-remove" onclick="babyTracker.removeEvent(${event.id})" title="Remove event">🗑️</button>
-                </div>
-            </div>
-        `;
-    }
-
     createEventElement(event) {
         const icons = {
             milk: '🍼',
@@ -418,36 +374,102 @@ class BabyTracker {
             hour12: true
         });
 
-        eventItem.innerHTML = `
-            <div class="event-info">
-                <span class="event-icon">${icons[event.type]}</span>
-                <div class="event-details">
-                    <select class="edit-type" value="${event.type}">
-                        <option value="milk" ${event.type === 'milk' ? 'selected' : ''}>🍼 Milk Feed</option>
-                        <option value="poo" ${event.type === 'poo' ? 'selected' : ''}>💩 Diaper Change</option>
-                        <option value="bath" ${event.type === 'bath' ? 'selected' : ''}>🛁 Bath Time</option>
-                        <option value="sleep" ${event.type === 'sleep' ? 'selected' : ''}>😴 Sleep Session</option>
-                    </select>
-                    <span class="event-time">${eventTime}</span>
-                </div>
-            </div>
-            <div class="event-actions">
-                <div class="edit-amount-group" style="${event.type === 'milk' || event.type === 'sleep' ? '' : 'display: none;'}">
-                    <input type="number" class="edit-amount" value="${event.amount || ''}" min="0" max="${event.type === 'milk' ? '500' : '480'}" placeholder="${event.type === 'milk' ? 'ml' : 'min'}" style="width: 80px; padding: 4px 8px;">
-                </div>
-                <button class="btn-save" onclick="babyTracker.saveInlineEdit(${eventId})" title="Save changes">💾</button>
-                <button class="btn-cancel" onclick="babyTracker.cancelInlineEdit(${eventId})" title="Cancel">❌</button>
-            </div>
-        `;
+        // Clear existing content
+        eventItem.textContent = '';
+
+        // Create event-info container
+        const eventInfo = document.createElement('div');
+        eventInfo.className = 'event-info';
+
+        // Create and append icon
+        const eventIcon = document.createElement('span');
+        eventIcon.className = 'event-icon';
+        eventIcon.textContent = icons[event.type];
+        eventInfo.appendChild(eventIcon);
+
+        // Create event-details container
+        const eventDetails = document.createElement('div');
+        eventDetails.className = 'event-details';
+
+        // Create type select dropdown
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'edit-type';
+        typeSelect.value = event.type;
+
+        const optionData = [
+            { value: 'milk', label: '🍼 Milk Feed' },
+            { value: 'poo', label: '💩 Diaper Change' },
+            { value: 'bath', label: '🛁 Bath Time' },
+            { value: 'sleep', label: '😴 Sleep Session' }
+        ];
+
+        optionData.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.value === event.type) {
+                option.selected = true;
+            }
+            typeSelect.appendChild(option);
+        });
+
+        eventDetails.appendChild(typeSelect);
+
+        // Create time display
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'event-time';
+        timeSpan.textContent = eventTime;
+        eventDetails.appendChild(timeSpan);
+
+        eventInfo.appendChild(eventDetails);
+        eventItem.appendChild(eventInfo);
+
+        // Create event-actions container
+        const eventActions = document.createElement('div');
+        eventActions.className = 'event-actions';
+
+        // Create amount input group
+        const amountGroup = document.createElement('div');
+        amountGroup.className = 'edit-amount-group';
+        if (event.type !== 'milk' && event.type !== 'sleep') {
+            amountGroup.style.display = 'none';
+        }
+
+        const amountInput = document.createElement('input');
+        amountInput.type = 'number';
+        amountInput.className = 'edit-amount';
+        amountInput.value = event.amount || '';
+        amountInput.min = '0';
+        amountInput.max = event.type === 'milk' ? '500' : '480';
+        amountInput.placeholder = event.type === 'milk' ? 'ml' : 'min';
+        amountInput.style.width = '80px';
+        amountInput.style.padding = '4px 8px';
+
+        amountGroup.appendChild(amountInput);
+        eventActions.appendChild(amountGroup);
+
+        // Create save button
+        const saveButton = document.createElement('button');
+        saveButton.className = 'btn-save';
+        saveButton.textContent = '💾';
+        saveButton.title = 'Save changes';
+        saveButton.addEventListener('click', () => this.saveInlineEdit(eventId));
+        eventActions.appendChild(saveButton);
+
+        // Create cancel button
+        const cancelButton = document.createElement('button');
+        cancelButton.className = 'btn-cancel';
+        cancelButton.textContent = '❌';
+        cancelButton.title = 'Cancel';
+        cancelButton.addEventListener('click', () => this.cancelInlineEdit(eventId));
+        eventActions.appendChild(cancelButton);
+
+        eventItem.appendChild(eventActions);
 
         // Add event listener for type change to show/hide amount field
-        const typeSelect = eventItem.querySelector('.edit-type');
-        const amountGroup = eventItem.querySelector('.edit-amount-group');
-
         typeSelect.addEventListener('change', (e) => {
             if (e.target.value === 'milk' || e.target.value === 'sleep') {
                 amountGroup.style.display = 'block';
-                const amountInput = amountGroup.querySelector('.edit-amount');
                 amountInput.max = e.target.value === 'milk' ? '500' : '480';
                 amountInput.placeholder = e.target.value === 'milk' ? 'ml' : 'min';
             } else {

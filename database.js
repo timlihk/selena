@@ -300,6 +300,39 @@ const Event = {
     }
   },
 
+  // Get the last incomplete sleep event for a user (N+1 query fix)
+  async getLastIncompleteSleep(userName) {
+    try {
+      if (pool === null) {
+        // In-memory mode
+        return memoryEvents
+          .filter(event =>
+            event.type === 'sleep' &&
+            event.user_name === userName &&
+            event.sleep_start_time &&
+            !event.sleep_end_time
+          )
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      }
+
+      const result = await pool.query(
+        `SELECT * FROM baby_events
+         WHERE type = 'sleep'
+           AND user_name = $1
+           AND sleep_start_time IS NOT NULL
+           AND sleep_end_time IS NULL
+         ORDER BY timestamp DESC
+         LIMIT 1`,
+        [userName]
+      );
+
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('Error getting last incomplete sleep event:', error);
+      throw error;
+    }
+  },
+
   // Delete an event
   async delete(id) {
     try {
