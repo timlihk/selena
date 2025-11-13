@@ -491,24 +491,6 @@ class BabyTracker {
         printWindow.print();
     }
 
-    // Optional: Clear all events (for development/testing)
-    async clearAllEvents() {
-        if (confirm('Are you sure you want to clear all events?')) {
-            try {
-                // Delete all events one by one (for simplicity)
-                for (const event of this.events) {
-                    await fetch(`/api/events/${event.id}`, {
-                        method: 'DELETE'
-                    });
-                }
-                await this.loadEvents();
-                await this.updateStats();
-            } catch (error) {
-                console.error('Error clearing events:', error);
-                alert('Failed to clear events');
-            }
-        }
-    }
 }
 
 // Initialize the tracker when the page loads
@@ -516,16 +498,3 @@ let babyTracker;
 document.addEventListener('DOMContentLoaded', () => {
     babyTracker = new BabyTracker();
 });
-
-// Add clear button for development (optional)
-const clearButton = document.createElement('button');
-clearButton.textContent = 'Clear All Events';
-clearButton.className = 'btn-primary';
-clearButton.style.marginTop = '10px';
-clearButton.style.backgroundColor = '#e53e3e';
-clearButton.onclick = async () => {
-    const tracker = new BabyTracker();
-    await tracker.clearAllEvents();
-};
-
-document.querySelector('.events-section').appendChild(clearButton);
