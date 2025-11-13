@@ -81,6 +81,47 @@ async function initializeDatabase() {
         )
       `);
 
+      // Check if user_name column exists, if not add it
+      const columnCheck = await client.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'baby_events' AND column_name = 'user_name'
+      `);
+
+      if (columnCheck.rows.length === 0) {
+        console.log('⚠️  Adding missing user_name column to baby_events table');
+        await client.query(`
+          ALTER TABLE baby_events
+          ADD COLUMN user_name VARCHAR(50) NOT NULL DEFAULT 'Unknown'
+        `);
+      }
+
+      // Check if sleep_start_time and sleep_end_time columns exist
+      const sleepColumnsCheck = await client.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'baby_events'
+        AND column_name IN ('sleep_start_time', 'sleep_end_time')
+      `);
+
+      const existingSleepColumns = sleepColumnsCheck.rows.map(row => row.column_name);
+
+      if (!existingSleepColumns.includes('sleep_start_time')) {
+        console.log('⚠️  Adding missing sleep_start_time column to baby_events table');
+        await client.query(`
+          ALTER TABLE baby_events
+          ADD COLUMN sleep_start_time TIMESTAMP
+        `);
+      }
+
+      if (!existingSleepColumns.includes('sleep_end_time')) {
+        console.log('⚠️  Adding missing sleep_end_time column to baby_events table');
+        await client.query(`
+          ALTER TABLE baby_events
+          ADD COLUMN sleep_end_time TIMESTAMP
+        `);
+      }
+
       console.log('✅ Database initialized successfully');
     } finally {
       client.release();
