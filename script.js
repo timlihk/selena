@@ -14,19 +14,18 @@ class BabyTracker {
         const eventForm = document.getElementById('eventForm');
         const eventType = document.getElementById('eventType');
         const milkAmountGroup = document.getElementById('milkAmountGroup');
+        const sleepDurationGroup = document.getElementById('sleepDurationGroup');
         const dateFilter = document.getElementById('dateFilter');
         const customDateRange = document.getElementById('customDateRange');
         const applyCustomRange = document.getElementById('applyCustomRange');
         const exportCSV = document.getElementById('exportCSV');
         const exportPDF = document.getElementById('exportPDF');
 
-        // Show/hide milk amount field based on event type
+        // Show/hide amount fields based on event type
         eventType.addEventListener('change', (e) => {
-            if (e.target.value === 'milk') {
-                milkAmountGroup.style.display = 'block';
-            } else {
-                milkAmountGroup.style.display = 'none';
-            }
+            const selectedType = e.target.value;
+            milkAmountGroup.style.display = selectedType === 'milk' ? 'block' : 'none';
+            sleepDurationGroup.style.display = selectedType === 'sleep' ? 'block' : 'none';
         });
 
         // Handle form submission
@@ -63,6 +62,7 @@ class BabyTracker {
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
+        const sleepDuration = document.getElementById('sleepDuration').value;
         const userName = document.getElementById('userName').value;
 
         if (!userName) {
@@ -80,6 +80,11 @@ class BabyTracker {
             return;
         }
 
+        if (eventType === 'sleep' && !sleepDuration) {
+            alert('Please enter sleep duration');
+            return;
+        }
+
         try {
             const response = await fetch('/api/events', {
                 method: 'POST',
@@ -88,7 +93,8 @@ class BabyTracker {
                 },
                 body: JSON.stringify({
                     type: eventType,
-                    amount: eventType === 'milk' ? parseInt(milkAmount) : null,
+                    amount: (eventType === 'milk' || eventType === 'sleep') ?
+                        (eventType === 'milk' ? parseInt(milkAmount) : parseInt(sleepDuration)) : null,
                     userName: userName
                 })
             });
@@ -110,6 +116,7 @@ class BabyTracker {
     resetForm() {
         document.getElementById('eventForm').reset();
         document.getElementById('milkAmountGroup').style.display = 'none';
+        document.getElementById('sleepDurationGroup').style.display = 'none';
     }
 
     async loadEvents() {
@@ -129,26 +136,35 @@ class BabyTracker {
 
     renderEvents() {
         const eventsList = document.getElementById('eventsList');
+        eventsList.innerHTML = ''; // Safe to clear
 
         if (this.events.length === 0) {
-            eventsList.innerHTML = '<p class="no-events">No events recorded yet. Add your first event above!</p>';
+            const noEvents = document.createElement('p');
+            noEvents.className = 'no-events';
+            noEvents.textContent = 'No events recorded yet. Add your first event above!';
+            eventsList.appendChild(noEvents);
             return;
         }
 
-        eventsList.innerHTML = this.events.map(event => this.createEventHTML(event)).join('');
+        this.events.forEach(event => {
+            const eventElement = this.createEventHTML(event);
+            eventsList.appendChild(eventElement);
+        });
     }
 
     createEventHTML(event) {
         const icons = {
             milk: '🍼',
             poo: '💩',
-            bath: '🛁'
+            bath: '🛁',
+            sleep: '😴'
         };
 
         const labels = {
             milk: 'Milk Feed',
             poo: 'Diaper Change',
-            bath: 'Bath Time'
+            bath: 'Bath Time',
+            sleep: 'Sleep Session'
         };
 
         const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
@@ -168,7 +184,11 @@ class BabyTracker {
                     </div>
                 </div>
                 <div class="event-actions">
-                    ${event.amount ? `<span class="event-amount">${event.amount}ml</span>` : ''}
+                    ${event.amount ?
+                        (event.type === 'milk' ?
+                            `<span class="event-amount">${event.amount}ml</span>` :
+                            `<span class="event-amount">${event.amount}min</span>`)
+                        : ''}
                     <button class="btn-edit" onclick="babyTracker.startInlineEdit(${event.id})" title="Edit event">✏️</button>
                     <button class="btn-remove" onclick="babyTracker.removeEvent(${event.id})" title="Remove event">🗑️</button>
                 </div>
@@ -187,11 +207,13 @@ class BabyTracker {
             document.getElementById('milkCount').textContent = stats.milk || 0;
             document.getElementById('pooCount').textContent = stats.poo || 0;
             document.getElementById('bathCount').textContent = stats.bath || 0;
+            document.getElementById('sleepCount').textContent = stats.sleep || 0;
         } catch (error) {
             console.error('Error loading stats:', error);
             document.getElementById('milkCount').textContent = '0';
             document.getElementById('pooCount').textContent = '0';
             document.getElementById('bathCount').textContent = '0';
+            document.getElementById('sleepCount').textContent = '0';
         }
     }
 
@@ -227,7 +249,8 @@ class BabyTracker {
         const icons = {
             milk: '🍼',
             poo: '💩',
-            bath: '🛁'
+            bath: '🛁',
+            sleep: '😴'
         };
 
         const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
@@ -244,13 +267,14 @@ class BabyTracker {
                         <option value="milk" ${event.type === 'milk' ? 'selected' : ''}>🍼 Milk Feed</option>
                         <option value="poo" ${event.type === 'poo' ? 'selected' : ''}>💩 Diaper Change</option>
                         <option value="bath" ${event.type === 'bath' ? 'selected' : ''}>🛁 Bath Time</option>
+                        <option value="sleep" ${event.type === 'sleep' ? 'selected' : ''}>😴 Sleep Session</option>
                     </select>
                     <span class="event-time">${eventTime}</span>
                 </div>
             </div>
             <div class="event-actions">
-                <div class="edit-amount-group" style="${event.type === 'milk' ? '' : 'display: none;'}">
-                    <input type="number" class="edit-amount" value="${event.amount || ''}" min="0" max="500" placeholder="ml" style="width: 80px; padding: 4px 8px;">
+                <div class="edit-amount-group" style="${event.type === 'milk' || event.type === 'sleep' ? '' : 'display: none;'}">
+                    <input type="number" class="edit-amount" value="${event.amount || ''}" min="0" max="${event.type === 'milk' ? '500' : '480'}" placeholder="${event.type === 'milk' ? 'ml' : 'min'}" style="width: 80px; padding: 4px 8px;">
                 </div>
                 <button class="btn-save" onclick="babyTracker.saveInlineEdit(${eventId})" title="Save changes">💾</button>
                 <button class="btn-cancel" onclick="babyTracker.cancelInlineEdit(${eventId})" title="Cancel">❌</button>
@@ -262,8 +286,11 @@ class BabyTracker {
         const amountGroup = eventItem.querySelector('.edit-amount-group');
 
         typeSelect.addEventListener('change', (e) => {
-            if (e.target.value === 'milk') {
+            if (e.target.value === 'milk' || e.target.value === 'sleep') {
                 amountGroup.style.display = 'block';
+                const amountInput = amountGroup.querySelector('.edit-amount');
+                amountInput.max = e.target.value === 'milk' ? '500' : '480';
+                amountInput.placeholder = e.target.value === 'milk' ? 'ml' : 'min';
             } else {
                 amountGroup.style.display = 'none';
             }
@@ -281,9 +308,9 @@ class BabyTracker {
         const newType = typeSelect.value;
         let newAmount = null;
 
-        if (newType === 'milk') {
+        if (newType === 'milk' || newType === 'sleep') {
             if (!amountInput.value || isNaN(amountInput.value) || parseInt(amountInput.value) <= 0) {
-                alert('Please enter a valid milk amount');
+                alert(`Please enter a valid ${newType === 'milk' ? 'milk amount' : 'sleep duration'}`);
                 return;
             }
             newAmount = parseInt(amountInput.value);

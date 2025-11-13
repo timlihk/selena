@@ -34,12 +34,18 @@
                         <option value="milk">🍼 Milk</option>
                         <option value="poo">💩 Poo-poo</option>
                         <option value="bath">🛁 Bath</option>
+                        <option value="sleep">😴 Sleep</option>
                     </select>
                 </div>
 
                 <div class="form-group" id="milkAmountGroup" style="display: none;">
                     <label for="milkAmount">Milk Amount (ml):</label>
                     <input type="number" id="milkAmount" name="milkAmount" min="0" max="500" placeholder="Enter ml">
+                </div>
+
+                <div class="form-group" id="sleepDurationGroup" style="display: none;">
+                    <label for="sleepDuration">Sleep Duration (minutes):</label>
+                    <input type="number" id="sleepDuration" name="sleepDuration" min="1" max="480" placeholder="Enter minutes">
                 </div>
 
                 <button type="submit" class="btn-primary">Add Event</button>
@@ -104,6 +110,11 @@
                     <span class="stat-icon">🛁</span>
                     <span class="stat-value" id="bathCount">0</span>
                     <span class="stat-label">Baths</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon">😴</span>
+                    <span class="stat-value" id="sleepCount">0</span>
+                    <span class="stat-label">Sleep Sessions</span>
                 </div>
             </div>
         </div>

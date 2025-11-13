@@ -50,7 +50,11 @@ app.post('/api/events', async (req, res) => {
       return res.status(400).json({ error: 'Milk amount is required and must be positive' });
     }
 
-    const event = await Event.create(type, type === 'milk' ? parseInt(amount) : null, userName);
+    if (type === 'sleep' && (!amount || amount <= 0)) {
+      return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+    }
+
+    const event = await Event.create(type, (type === 'milk' || type === 'sleep') ? parseInt(amount) : null, userName);
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);
@@ -95,7 +99,11 @@ app.put('/api/events/:id', async (req, res) => {
       return res.status(400).json({ error: 'Milk amount is required and must be positive' });
     }
 
-    const event = await Event.update(parseInt(id), type, type === 'milk' ? parseInt(amount) : null);
+    if (type === 'sleep' && (!amount || amount <= 0)) {
+      return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+    }
+
+    const event = await Event.update(parseInt(id), type, (type === 'milk' || type === 'sleep') ? parseInt(amount) : null);
     res.json(event);
   } catch (error) {
     console.error('Error updating event:', error);
