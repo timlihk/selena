@@ -163,6 +163,27 @@ const Event = {
     }
   },
 
+  // Get events by type
+  async getByType(type) {
+    try {
+      if (pool === null) {
+        // In-memory mode
+        return memoryEvents
+          .filter(event => event.type === type)
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      }
+
+      const result = await pool.query(
+        'SELECT * FROM baby_events WHERE type = $1 ORDER BY timestamp DESC',
+        [type]
+      );
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting events by type:', error);
+      throw error;
+    }
+  },
+
   // Get all events
   async getAll() {
     try {

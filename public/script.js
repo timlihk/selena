@@ -55,6 +55,12 @@ class BabyTracker {
             }
         });
 
+        // Type filter change
+        const typeFilter = document.getElementById('typeFilter');
+        typeFilter.addEventListener('change', (e) => {
+            this.applyTypeFilter(e.target.value);
+        });
+
         // Apply custom date range
         applyCustomRange.addEventListener('click', () => {
             this.applyCustomDateFilter();
@@ -623,6 +629,27 @@ class BabyTracker {
         } catch (error) {
             console.error('Error applying custom date filter:', error);
             alert('Failed to apply custom date filter');
+        }
+    }
+
+    // Apply type filter
+    async applyTypeFilter(type) {
+        try {
+            if (type === 'all') {
+                // Reload all events
+                await this.loadEvents();
+            } else {
+                // Filter by type
+                const response = await fetch(`/api/events?type=${type}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load filtered events');
+                }
+                this.events = await response.json();
+                this.renderEvents();
+            }
+        } catch (error) {
+            console.error('Error applying type filter:', error);
+            alert('Failed to apply type filter');
         }
     }
 

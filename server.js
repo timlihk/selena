@@ -43,10 +43,17 @@ app.use(express.static(PUBLIC_DIR));
 
 async function getEventsHandler(req, res) {
   try {
-    const { filter } = req.query;
+    const { filter, type } = req.query;
     let events;
 
-    if (filter) {
+    if (type && type !== 'all') {
+      // Filter by type
+      if (!ALLOWED_EVENT_TYPES.includes(type)) {
+        return res.status(400).json({ error: 'Invalid event type' });
+      }
+      events = await Event.getByType(type);
+    } else if (filter) {
+      // Date filter
       if (typeof filter !== 'string') {
         return res.status(400).json({ error: 'Invalid filter format' });
       }
