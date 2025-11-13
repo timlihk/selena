@@ -104,6 +104,54 @@ const Event = {
     }
   },
 
+  // Get filtered events
+  async getFiltered(filter) {
+    try {
+      if (pool === null) {
+        // In-memory mode
+        let filteredEvents = [...memoryEvents];
+
+        if (filter.startDate) {
+          const start = new Date(filter.startDate);
+          filteredEvents = filteredEvents.filter(event => new Date(event.timestamp) >= start);
+        }
+
+        if (filter.endDate) {
+          const end = new Date(filter.endDate);
+          filteredEvents = filteredEvents.filter(event => new Date(event.timestamp) <= end);
+        }
+
+        return filteredEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      }
+
+      let query = 'SELECT * FROM baby_events';
+      let params = [];
+      let conditions = [];
+
+      if (filter.startDate) {
+        conditions.push('timestamp >= $' + (params.length + 1));
+        params.push(filter.startDate);
+      }
+
+      if (filter.endDate) {
+        conditions.push('timestamp <= $' + (params.length + 1));
+        params.push(filter.endDate + ' 23:59:59'); // Include entire end date
+      }
+
+      if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
+      }
+
+      query += ' ORDER BY timestamp DESC';
+
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting filtered events:', error);
+      throw error;
+    }
+  },
+
   // Create a new event
   async create(type, amount = null) {
     try {

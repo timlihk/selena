@@ -16,7 +16,16 @@ app.use(express.static(path.join(__dirname)));
 // Get all events
 app.get('/api/events', async (req, res) => {
   try {
-    const events = await Event.getAll();
+    const { filter } = req.query;
+    let events;
+
+    if (filter) {
+      const filterData = JSON.parse(filter);
+      events = await Event.getFiltered(filterData);
+    } else {
+      events = await Event.getAll();
+    }
+
     res.json(events);
   } catch (error) {
     console.error('Error fetching events:', error);

@@ -197,6 +197,140 @@ header p {
     opacity: 0.9;
 }
 
+/* Filter Controls */
+.filter-controls {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.filter-group label {
+    font-weight: 600;
+    color: #4a5568;
+    min-width: 120px;
+}
+
+.filter-select, .date-input {
+    padding: 8px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+}
+
+.filter-select:focus, .date-input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.custom-range {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: end;
+    padding-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.btn-secondary {
+    background: #718096;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #4a5568;
+}
+
+/* Export Button */
+.export-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.btn-export {
+    background: #38a169;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.btn-export:hover {
+    background: #2f855a;
+}
+
+/* Inline Edit Form Styles */
+.edit-type {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+    margin-right: 10px;
+}
+
+.edit-amount {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+    margin-right: 10px;
+}
+
+.btn-save, .btn-cancel {
+    border: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 5px;
+    transition: background-color 0.2s;
+}
+
+.btn-save {
+    background: #38a169;
+    color: white;
+}
+
+.btn-save:hover {
+    background: #2f855a;
+}
+
+.btn-cancel {
+    background: #e53e3e;
+    color: white;
+}
+
+.btn-cancel:hover {
+    background: #c53030;
+}
+
+.edit-amount-group {
+    display: inline-block;
+    margin-right: 10px;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .container {
@@ -213,5 +347,19 @@ header p {
 
     .stats-grid {
         grid-template-columns: 1fr;
+    }
+
+    .filter-group {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-group label {
+        min-width: auto;
+    }
+
+    .custom-range {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
