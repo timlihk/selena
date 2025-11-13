@@ -40,6 +40,7 @@ app.get('/api/events', async (req, res) => {
 // Create a new event
 app.post('/api/events', async (req, res) => {
   try {
+    console.log('Received event creation request:', req.body);
     const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime } = req.body;
 
     if (!type) {
@@ -104,7 +105,9 @@ app.post('/api/events', async (req, res) => {
       calculatedAmount = type === 'milk' ? parseInt(amount) : null;
     }
 
+    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd });
     const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd);
+    console.log('Event created successfully:', event);
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);

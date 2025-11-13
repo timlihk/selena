@@ -287,8 +287,8 @@ const Event = {
       }
 
       const result = await pool.query(
-        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $4, sleep_end_time = $5 WHERE id = $3 RETURNING *',
-        [type, amount, id, sleepStartTime, sleepEndTime]
+        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4 WHERE id = $5 RETURNING *',
+        [type, amount, sleepStartTime, sleepEndTime, id]
       );
 
       if (result.rows.length === 0) {
