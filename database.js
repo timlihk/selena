@@ -185,6 +185,11 @@ const Event = {
       return result.rows[0];
     } catch (error) {
       console.error('Error creating event:', error);
+      console.error('Error details:', {
+        type, amount, userName, sleepStartTime, sleepEndTime,
+        poolExists: pool !== null,
+        poolType: pool ? 'PostgreSQL' : 'In-memory'
+      });
       throw error;
     }
   },
