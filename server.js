@@ -3,6 +3,10 @@ const path = require('path');
 const cors = require('cors');
 const { initializeDatabase, Event } = require('./database');
 
+// Input validation constants
+const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'bath', 'sleep'];
+const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -42,8 +46,16 @@ app.post('/api/events', async (req, res) => {
       return res.status(400).json({ error: 'Event type is required' });
     }
 
+    if (!ALLOWED_EVENT_TYPES.includes(type)) {
+      return res.status(400).json({ error: 'Invalid event type' });
+    }
+
     if (!userName) {
       return res.status(400).json({ error: 'User name is required' });
+    }
+
+    if (!ALLOWED_USERS.includes(userName)) {
+      return res.status(400).json({ error: 'Invalid user' });
     }
 
     if (type === 'milk' && (!amount || amount <= 0)) {
@@ -93,6 +105,10 @@ app.put('/api/events/:id', async (req, res) => {
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
+    }
+
+    if (!ALLOWED_EVENT_TYPES.includes(type)) {
+      return res.status(400).json({ error: 'Invalid event type' });
     }
 
     if (type === 'milk' && (!amount || amount <= 0)) {

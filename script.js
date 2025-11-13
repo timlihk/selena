@@ -147,7 +147,7 @@ class BabyTracker {
         }
 
         this.events.forEach(event => {
-            const eventElement = this.createEventHTML(event);
+            const eventElement = this.createEventElement(event);
             eventsList.appendChild(eventElement);
         });
     }
@@ -194,6 +194,96 @@ class BabyTracker {
                 </div>
             </div>
         `;
+    }
+
+    createEventElement(event) {
+        const icons = {
+            milk: '🍼',
+            poo: '💩',
+            bath: '🛁',
+            sleep: '😴'
+        };
+
+        const labels = {
+            milk: 'Milk Feed',
+            poo: 'Diaper Change',
+            bath: 'Bath Time',
+            sleep: 'Sleep Session'
+        };
+
+        const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+
+        // Create DOM elements safely
+        const eventItem = document.createElement('div');
+        eventItem.className = 'event-item';
+        eventItem.setAttribute('data-event-id', event.id);
+
+        const eventInfo = document.createElement('div');
+        eventInfo.className = 'event-info';
+
+        const eventIcon = document.createElement('span');
+        eventIcon.className = 'event-icon';
+        eventIcon.textContent = icons[event.type];
+
+        const eventDetails = document.createElement('div');
+        eventDetails.className = 'event-details';
+
+        const eventType = document.createElement('span');
+        eventType.className = 'event-type';
+        eventType.textContent = labels[event.type];
+
+        const eventTimeSpan = document.createElement('span');
+        eventTimeSpan.className = 'event-time';
+        eventTimeSpan.textContent = eventTime;
+
+        const eventUser = document.createElement('span');
+        eventUser.className = 'event-user';
+        eventUser.textContent = `👤 ${event.user_name}`;
+
+        const eventActions = document.createElement('div');
+        eventActions.className = 'event-actions';
+
+        // Add amount if present
+        if (event.amount) {
+            const eventAmount = document.createElement('span');
+            eventAmount.className = 'event-amount';
+            eventAmount.textContent = event.type === 'milk' ? `${event.amount}ml` : `${event.amount}min`;
+            eventActions.appendChild(eventAmount);
+        }
+
+        // Add edit button
+        const editButton = document.createElement('button');
+        editButton.className = 'btn-edit';
+        editButton.textContent = '✏️';
+        editButton.title = 'Edit event';
+        editButton.addEventListener('click', () => this.startInlineEdit(event.id));
+
+        // Add remove button
+        const removeButton = document.createElement('button');
+        removeButton.className = 'btn-remove';
+        removeButton.textContent = '🗑️';
+        removeButton.title = 'Remove event';
+        removeButton.addEventListener('click', () => this.removeEvent(event.id));
+
+        // Build DOM structure
+        eventDetails.appendChild(eventType);
+        eventDetails.appendChild(eventTimeSpan);
+        eventDetails.appendChild(eventUser);
+
+        eventInfo.appendChild(eventIcon);
+        eventInfo.appendChild(eventDetails);
+
+        eventActions.appendChild(editButton);
+        eventActions.appendChild(removeButton);
+
+        eventItem.appendChild(eventInfo);
+        eventItem.appendChild(eventActions);
+
+        return eventItem;
     }
 
     async updateStats() {

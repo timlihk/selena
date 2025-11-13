@@ -11,7 +11,7 @@ if (process.env.NODE_ENV === 'development' && !process.env.DATABASE_URL) {
 } else {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.NODE_ENV === 'production' ? true : false,
     // Add connection timeout and retry settings
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
@@ -35,10 +35,13 @@ async function testConnection() {
     }
 
     const client = await pool.connect();
-    const result = await client.query('SELECT NOW() as current_time');
-    console.log('✅ Database connection successful:', result.rows[0].current_time);
-    client.release();
-    return true;
+    try {
+      const result = await client.query('SELECT NOW() as current_time');
+      console.log('✅ Database connection successful:', result.rows[0].current_time);
+      return true;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
     console.error('Full error:', error);
@@ -61,20 +64,22 @@ async function initializeDatabase() {
     }
 
     const client = await pool.connect();
+    try {
+      // Create events table if it doesn't exist
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS baby_events (
+          id SERIAL PRIMARY KEY,
+          type VARCHAR(20) NOT NULL,
+          amount INTEGER,
+          user_name VARCHAR(50) NOT NULL,
+          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-    // Create events table if it doesn't exist
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS baby_events (
-        id SERIAL PRIMARY KEY,
-        type VARCHAR(20) NOT NULL,
-        amount INTEGER,
-        user_name VARCHAR(50) NOT NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    console.log('✅ Database initialized successfully');
-    client.release();
+      console.log('✅ Database initialized successfully');
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
     throw error; // Re-throw to stop server startup
