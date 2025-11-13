@@ -43,17 +43,17 @@ app.use(express.static(PUBLIC_DIR));
 
 async function getEventsHandler(req, res) {
   try {
-    const { filter, type } = req.query;
+    const { filter } = req.query;
+    const rawType = typeof req.query.type === 'string' ? req.query.type.trim() : '';
+    const typeFilter = rawType && rawType !== 'all' ? rawType : '';
+
+    if (typeFilter && !ALLOWED_EVENT_TYPES.includes(typeFilter)) {
+      return res.status(400).json({ error: 'Invalid event type' });
+    }
+
     let events;
 
-    if (type && type !== 'all') {
-      // Filter by type
-      if (!ALLOWED_EVENT_TYPES.includes(type)) {
-        return res.status(400).json({ error: 'Invalid event type' });
-      }
-      events = await Event.getByType(type);
-    } else if (filter) {
-      // Date filter
+    if (filter) {
       if (typeof filter !== 'string') {
         return res.status(400).json({ error: 'Invalid filter format' });
       }
@@ -70,8 +70,14 @@ async function getEventsHandler(req, res) {
       }
 
       events = await Event.getFiltered(filterData);
+    } else if (typeFilter) {
+      events = await Event.getByType(typeFilter);
     } else {
       events = await Event.getAll();
+    }
+
+    if (typeFilter && filter) {
+      events = events.filter(event => event.type === typeFilter);
     }
 
     res.json(events);

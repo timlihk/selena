@@ -22,6 +22,7 @@ function createMockResponse() {
 }
 
 async function testInvalidFilterReturns400() {
+  resetMemoryStore();
   const req = {
     query: {
       filter: 'notjson'
@@ -33,6 +34,27 @@ async function testInvalidFilterReturns400() {
 
   assert.strictEqual(res.statusCode, 400, 'Expected HTTP 400 for invalid filter');
   assert.deepStrictEqual(res.jsonData, { error: 'Invalid filter format' });
+}
+
+async function testTypeFilterReturnsOnlyRequestedType() {
+  resetMemoryStore();
+  await Event.create('milk', 120, 'Tim');
+  await Event.create('poo', null, 'Tim');
+  await Event.create('milk', 90, 'Angie');
+
+  const req = {
+    query: {
+      type: 'milk'
+    }
+  };
+  const res = createMockResponse();
+
+  await getEventsHandler(req, res);
+
+  assert.strictEqual(res.statusCode, 200, 'Type filter should return HTTP 200');
+  assert(Array.isArray(res.jsonData), 'Response should be an array');
+  assert.strictEqual(res.jsonData.length, 2, 'Should return only milk events');
+  assert(res.jsonData.every(event => event.type === 'milk'), 'All events should be milk type');
 }
 
 async function testSleepUpdatePreservesTimestamps() {
@@ -58,9 +80,9 @@ async function testSleepUpdatePreservesTimestamps() {
 
 async function run() {
   await initializeDatabase();
-  resetMemoryStore();
 
   await testInvalidFilterReturns400();
+  await testTypeFilterReturnsOnlyRequestedType();
   await testSleepUpdatePreservesTimestamps();
 
   console.log('All tests passed');
