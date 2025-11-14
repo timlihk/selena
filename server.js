@@ -14,6 +14,9 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy for Railway deployment (required for rate limiting)
+app.set('trust proxy', 1);
+
 // Rate limiting configuration
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
