@@ -793,55 +793,101 @@ class BabyTracker {
                 sleep: '😴'
             };
 
+            const eventLabels = {
+                milk: 'Milk',
+                poo: 'Poo',
+                bath: 'Bath',
+                sleep: 'Sleep'
+            };
+
             // Sort events by time
             todayEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-            // Calculate positions and render events
-            todayEvents.forEach((event, index) => {
+            // Group events into rows to avoid overlap
+            const rows = [[]];
+            const MIN_WIDTH_PERCENT = 2.5; // Minimum 2.5% width for each event (~36 minutes)
+
+            todayEvents.forEach(event => {
                 const eventDate = new Date(event.timestamp);
                 const hour = eventDate.getHours();
                 const minute = eventDate.getMinutes();
-
-                // Calculate position (percentage across the 24-hour timeline)
                 const timeInMinutes = hour * 60 + minute;
                 const leftPosition = (timeInMinutes / (24 * 60)) * 100;
 
-                // Format time for tooltip
-                const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+                // Try to find a row where this event doesn't overlap
+                let placed = false;
+                for (let row of rows) {
+                    const hasOverlap = row.some(existingEvent => {
+                        const existingLeft = existingEvent.leftPosition;
+                        const existingRight = existingLeft + MIN_WIDTH_PERCENT;
+                        const newRight = leftPosition + MIN_WIDTH_PERCENT;
+                        return !(newRight < existingLeft || leftPosition > existingRight);
+                    });
 
-                // Create event element
-                const eventDiv = document.createElement('div');
-                eventDiv.className = `timeline-event ${event.type}`;
-                eventDiv.style.left = `${leftPosition}%`;
-
-                // Vertical positioning to avoid overlap
-                const row = index % 3;
-                eventDiv.style.top = `${10 + (row * 35)}px`;
-
-                // Add icon
-                eventDiv.textContent = eventIcons[event.type] || '•';
-
-                // Create tooltip
-                const tooltip = document.createElement('div');
-                tooltip.className = 'timeline-event-tooltip';
-                let tooltipText = `${timeString} - ${event.type}`;
-                if (event.type === 'milk' && event.amount) {
-                    tooltipText += ` (${event.amount}ml)`;
-                } else if (event.type === 'sleep' && event.amount) {
-                    tooltipText += ` (${event.amount} min)`;
+                    if (!hasOverlap) {
+                        row.push({ event, leftPosition });
+                        placed = true;
+                        break;
+                    }
                 }
-                if (event.user_name) {
-                    tooltipText += ` - ${event.user_name}`;
-                }
-                tooltip.textContent = tooltipText;
 
-                eventDiv.appendChild(tooltip);
-                eventsContainer.appendChild(eventDiv);
+                if (!placed) {
+                    rows.push([{ event, leftPosition }]);
+                }
             });
 
-            // Adjust container height based on number of events
-            const minRows = Math.min(3, Math.ceil(todayEvents.length / 8));
-            eventsContainer.style.minHeight = `${minRows * 35 + 20}px`;
+            // Create rows and render events
+            rows.forEach((row, rowIndex) => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'timeline-row';
+                eventsContainer.appendChild(rowDiv);
+
+                row.forEach(({ event, leftPosition }) => {
+                    const eventDate = new Date(event.timestamp);
+                    const hour = eventDate.getHours();
+                    const minute = eventDate.getMinutes();
+                    const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+                    // Create event bar
+                    const eventDiv = document.createElement('div');
+                    eventDiv.className = `timeline-event ${event.type}`;
+                    eventDiv.style.left = `${leftPosition}%`;
+                    eventDiv.style.width = `${MIN_WIDTH_PERCENT}%`;
+
+                    // Add icon and label
+                    const iconSpan = document.createElement('span');
+                    iconSpan.textContent = eventIcons[event.type] || '•';
+                    eventDiv.appendChild(iconSpan);
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'timeline-event-label';
+                    let labelText = timeString;
+                    if (event.type === 'milk' && event.amount) {
+                        labelText += ` ${event.amount}ml`;
+                    } else if (event.type === 'sleep' && event.amount) {
+                        labelText += ` ${event.amount}m`;
+                    }
+                    labelSpan.textContent = labelText;
+                    eventDiv.appendChild(labelSpan);
+
+                    // Create tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'timeline-event-tooltip';
+                    let tooltipText = `${timeString} - ${eventLabels[event.type]}`;
+                    if (event.type === 'milk' && event.amount) {
+                        tooltipText += ` (${event.amount}ml)`;
+                    } else if (event.type === 'sleep' && event.amount) {
+                        tooltipText += ` (${event.amount} min)`;
+                    }
+                    if (event.user_name) {
+                        tooltipText += ` - ${event.user_name}`;
+                    }
+                    tooltip.textContent = tooltipText;
+
+                    eventDiv.appendChild(tooltip);
+                    rowDiv.appendChild(eventDiv);
+                });
+            });
 
         } catch (error) {
             console.error('Error rendering timeline:', error);
