@@ -420,205 +420,172 @@ header p {
 
 .timeline-section h2 {
     color: #4a5568;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
     font-size: 1.5rem;
-}
-
-.timeline-legend {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    color: #4a5568;
-}
-
-.legend-color {
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
-    display: inline-block;
-}
-
-.legend-color.milk {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.legend-color.poo {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.legend-color.bath {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
-.legend-color.sleep {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
 }
 
 .timeline-chart {
     position: relative;
-    background: #f7fafc;
-    border-radius: 10px;
-    padding: 20px 10px;
-    min-height: 150px;
+    background: #ffffff;
 }
 
 .timeline-hours {
     display: flex;
     justify-content: space-between;
-    padding: 0 5px;
-    margin-bottom: 10px;
-    font-size: 0.75rem;
-    color: #718096;
+    padding: 0 60px 0 100px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 8px;
 }
 
 .timeline-hour {
     flex: 1;
     text-align: center;
-    position: relative;
-}
-
-.timeline-hour:not(:last-child)::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    top: 100%;
-    width: 1px;
-    height: 120px;
-    background: #e2e8f0;
+    font-size: 0.7rem;
+    color: #a0aec0;
+    font-weight: 500;
 }
 
 .timeline-events {
-    position: relative;
-    min-height: 200px;
-    background: white;
-    border-radius: 8px;
-    padding: 20px 5px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
 }
 
-.timeline-row {
-    position: relative;
-    height: 50px;
-    background: #f7fafc;
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-}
-
-.timeline-event {
-    position: absolute;
-    height: 100%;
-    border-radius: 4px;
+.timeline-lane {
     display: flex;
     align-items: center;
-    padding: 0 12px;
+    min-height: 60px;
+    border-bottom: 1px solid #f0f0f0;
+    position: relative;
+    padding: 8px 0;
+}
+
+.timeline-lane:last-child {
+    border-bottom: none;
+}
+
+.timeline-lane-label {
+    width: 90px;
+    display: flex;
+    align-items: center;
     gap: 8px;
-    font-size: 1.3rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    padding-left: 10px;
+}
+
+.timeline-lane-track {
+    flex: 1;
+    position: relative;
+    height: 40px;
+    background: #fafafa;
+    border-radius: 20px;
+    margin: 0 10px;
+}
+
+.timeline-marker {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
     cursor: pointer;
     transition: all 0.2s ease;
+    border: 3px solid white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    z-index: 1;
-    min-width: 60px;
-    color: white;
-    font-weight: 600;
+    top: 50%;
+    transform: translate(-50%, -50%);
 }
 
-.timeline-event:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    z-index: 2;
-}
-
-.timeline-event.milk {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.timeline-event.poo {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.timeline-event.bath {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
-.timeline-event.sleep {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-}
-
-.timeline-event-label {
-    font-size: 0.8rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.timeline-event-tooltip {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.9);
-    color: white;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    white-space: nowrap;
-    margin-bottom: 8px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
+.timeline-marker:hover {
+    transform: translate(-50%, -50%) scale(1.5);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     z-index: 10;
 }
 
-.timeline-event:hover .timeline-event-tooltip {
+.timeline-marker.milk {
+    background: #667eea;
+}
+
+.timeline-marker.poo {
+    background: #f093fb;
+}
+
+.timeline-marker.bath {
+    background: #4facfe;
+}
+
+.timeline-marker.sleep {
+    background: #43e97b;
+}
+
+.timeline-marker-tooltip {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2d3748;
+    color: white;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.timeline-marker:hover .timeline-marker-tooltip {
     opacity: 1;
 }
 
-.timeline-event-tooltip::after {
+.timeline-marker-tooltip::after {
     content: '';
     position: absolute;
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
     border: 6px solid transparent;
-    border-top-color: rgba(0, 0, 0, 0.9);
+    border-top-color: #2d3748;
 }
 
 .timeline-empty {
     text-align: center;
-    padding: 40px 20px;
-    color: #a0aec0;
+    padding: 60px 20px;
+    color: #cbd5e0;
     font-style: italic;
+    font-size: 1rem;
 }
 
 @media (max-width: 768px) {
     .timeline-hours {
-        font-size: 0.65rem;
+        padding: 0 40px 0 70px;
+        font-size: 0.6rem;
     }
 
-    .timeline-row {
-        height: 40px;
+    .timeline-lane {
+        min-height: 50px;
     }
 
-    .timeline-event {
-        font-size: 1rem;
-        padding: 0 8px;
+    .timeline-lane-label {
+        width: 65px;
+        font-size: 0.8rem;
     }
 
-    .timeline-event-label {
-        font-size: 0.7rem;
+    .timeline-lane-track {
+        height: 32px;
     }
 
-    .legend-item {
-        font-size: 0.85rem;
+    .timeline-marker {
+        width: 10px;
+        height: 10px;
+    }
+
+    .timeline-marker-tooltip {
+        font-size: 0.75rem;
+        padding: 8px 10px;
     }
 }

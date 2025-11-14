@@ -766,127 +766,93 @@ class BabyTracker {
                 return eventDate >= startOfDay && eventDate <= endOfDay;
             });
 
-            // Render the timeline hours (0-23)
+            // Render the timeline hours (0, 6, 12, 18, 24)
             const hoursContainer = document.querySelector('.timeline-hours');
             hoursContainer.innerHTML = '';
-            for (let hour = 0; hour < 24; hour++) {
+            [0, 6, 12, 18, 24].forEach(hour => {
                 const hourDiv = document.createElement('div');
                 hourDiv.className = 'timeline-hour';
                 hourDiv.textContent = `${hour}:00`;
                 hoursContainer.appendChild(hourDiv);
-            }
+            });
 
             // Render the events
             const eventsContainer = document.querySelector('.timeline-events');
             eventsContainer.innerHTML = '';
 
             if (todayEvents.length === 0) {
-                eventsContainer.innerHTML = '<div class="timeline-empty">No events recorded today yet</div>';
+                eventsContainer.innerHTML = '<div class="timeline-empty">No events recorded today</div>';
                 return;
             }
 
-            // Event icons
-            const eventIcons = {
-                milk: '🍼',
-                poo: '💩',
-                bath: '🛁',
-                sleep: '😴'
-            };
+            // Event configuration
+            const eventTypes = [
+                { type: 'milk', icon: '🍼', label: 'Milk' },
+                { type: 'poo', icon: '💩', label: 'Poo' },
+                { type: 'bath', icon: '🛁', label: 'Bath' },
+                { type: 'sleep', icon: '😴', label: 'Sleep' }
+            ];
 
-            const eventLabels = {
-                milk: 'Milk',
-                poo: 'Poo',
-                bath: 'Bath',
-                sleep: 'Sleep'
-            };
-
-            // Sort events by time
-            todayEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-            // Group events into rows to avoid overlap
-            const rows = [[]];
-            const MIN_WIDTH_PERCENT = 2.5; // Minimum 2.5% width for each event (~36 minutes)
-
+            // Group events by type
+            const eventsByType = {};
             todayEvents.forEach(event => {
-                const eventDate = new Date(event.timestamp);
-                const hour = eventDate.getHours();
-                const minute = eventDate.getMinutes();
-                const timeInMinutes = hour * 60 + minute;
-                const leftPosition = (timeInMinutes / (24 * 60)) * 100;
-
-                // Try to find a row where this event doesn't overlap
-                let placed = false;
-                for (let row of rows) {
-                    const hasOverlap = row.some(existingEvent => {
-                        const existingLeft = existingEvent.leftPosition;
-                        const existingRight = existingLeft + MIN_WIDTH_PERCENT;
-                        const newRight = leftPosition + MIN_WIDTH_PERCENT;
-                        return !(newRight < existingLeft || leftPosition > existingRight);
-                    });
-
-                    if (!hasOverlap) {
-                        row.push({ event, leftPosition });
-                        placed = true;
-                        break;
-                    }
+                if (!eventsByType[event.type]) {
+                    eventsByType[event.type] = [];
                 }
-
-                if (!placed) {
-                    rows.push([{ event, leftPosition }]);
-                }
+                eventsByType[event.type].push(event);
             });
 
-            // Create rows and render events
-            rows.forEach((row, rowIndex) => {
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'timeline-row';
-                eventsContainer.appendChild(rowDiv);
+            // Create a lane for each event type
+            eventTypes.forEach(({ type, icon, label }) => {
+                const laneDiv = document.createElement('div');
+                laneDiv.className = 'timeline-lane';
 
-                row.forEach(({ event, leftPosition }) => {
+                // Lane label
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'timeline-lane-label';
+                labelDiv.innerHTML = `<span>${icon}</span><span>${label}</span>`;
+                laneDiv.appendChild(labelDiv);
+
+                // Lane track
+                const trackDiv = document.createElement('div');
+                trackDiv.className = 'timeline-lane-track';
+
+                // Add events for this type
+                const events = eventsByType[type] || [];
+                events.forEach(event => {
                     const eventDate = new Date(event.timestamp);
                     const hour = eventDate.getHours();
                     const minute = eventDate.getMinutes();
+                    const timeInMinutes = hour * 60 + minute;
+                    const leftPosition = (timeInMinutes / (24 * 60)) * 100;
                     const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 
-                    // Create event bar
-                    const eventDiv = document.createElement('div');
-                    eventDiv.className = `timeline-event ${event.type}`;
-                    eventDiv.style.left = `${leftPosition}%`;
-                    eventDiv.style.width = `${MIN_WIDTH_PERCENT}%`;
-
-                    // Add icon and label
-                    const iconSpan = document.createElement('span');
-                    iconSpan.textContent = eventIcons[event.type] || '•';
-                    eventDiv.appendChild(iconSpan);
-
-                    const labelSpan = document.createElement('span');
-                    labelSpan.className = 'timeline-event-label';
-                    let labelText = timeString;
-                    if (event.type === 'milk' && event.amount) {
-                        labelText += ` ${event.amount}ml`;
-                    } else if (event.type === 'sleep' && event.amount) {
-                        labelText += ` ${event.amount}m`;
-                    }
-                    labelSpan.textContent = labelText;
-                    eventDiv.appendChild(labelSpan);
+                    // Create marker
+                    const marker = document.createElement('div');
+                    marker.className = `timeline-marker ${type}`;
+                    marker.style.left = `${leftPosition}%`;
 
                     // Create tooltip
                     const tooltip = document.createElement('div');
-                    tooltip.className = 'timeline-event-tooltip';
-                    let tooltipText = `${timeString} - ${eventLabels[event.type]}`;
+                    tooltip.className = 'timeline-marker-tooltip';
+                    let tooltipText = `${timeString}`;
                     if (event.type === 'milk' && event.amount) {
-                        tooltipText += ` (${event.amount}ml)`;
+                        tooltipText += ` • ${event.amount}ml`;
                     } else if (event.type === 'sleep' && event.amount) {
-                        tooltipText += ` (${event.amount} min)`;
+                        tooltipText += ` • ${event.amount} min`;
                     }
                     if (event.user_name) {
-                        tooltipText += ` - ${event.user_name}`;
+                        tooltipText += `\n${event.user_name}`;
                     }
                     tooltip.textContent = tooltipText;
+                    tooltip.style.whiteSpace = 'pre-line';
 
-                    eventDiv.appendChild(tooltip);
-                    rowDiv.appendChild(eventDiv);
+                    marker.appendChild(tooltip);
+                    trackDiv.appendChild(marker);
                 });
+
+                laneDiv.appendChild(trackDiv);
+                eventsContainer.appendChild(laneDiv);
             });
 
         } catch (error) {
