@@ -4,22 +4,27 @@ require('dotenv').config();
 // Database connection configuration
 let pool;
 
-// Require DATABASE_URL environment variable
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
-
 // For Railway and other cloud platforms, always use SSL
 const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
 
-pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: sslConfig,
-  // Add connection timeout and retry settings
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 20
-});
+// Initialize pool only when DATABASE_URL is available
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: sslConfig,
+    // Add connection timeout and retry settings
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    max: 20
+  });
+}
+
+// Helper function to check if database is connected
+function ensureDatabaseConnected() {
+  if (!pool) {
+    throw new Error('Database not connected. DATABASE_URL environment variable is required');
+  }
+}
 
 // Test database connection
 async function testConnection() {
@@ -132,6 +137,7 @@ const Event = {
   // Get event by ID
   async getById(id) {
     try {
+      ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE id = $1 LIMIT 1',
         [id]
@@ -146,6 +152,7 @@ const Event = {
   // Get events by type
   async getByType(type) {
     try {
+      ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE type = $1 ORDER BY timestamp DESC',
         [type]
@@ -160,6 +167,7 @@ const Event = {
   // Get all events
   async getAll() {
     try {
+      ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events ORDER BY timestamp DESC'
       );
@@ -173,6 +181,7 @@ const Event = {
   // Get filtered events
   async getFiltered(filter) {
     try {
+      ensureDatabaseConnected();
       let query = 'SELECT * FROM baby_events';
       let params = [];
       let conditions = [];
@@ -201,29 +210,11 @@ const Event = {
     }
   },
 
-  // Get events by type
-  async getByType(type) {
-    try {
-      if (pool === null) {
-        return memoryEvents
-          .filter(event => event.type === type)
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      }
-
-      const result = await pool.query(
-        'SELECT * FROM baby_events WHERE type = $1 ORDER BY timestamp DESC',
-        [type]
-      );
-      return result.rows;
-    } catch (error) {
-      console.error('Error getting events by type:', error);
-      throw error;
-    }
-  },
 
   // Create a new event
   async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null) {
     try {
+      ensureDatabaseConnected();
       const result = await pool.query(
         'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [type, amount, userName, sleepStartTime, sleepEndTime]
@@ -244,6 +235,7 @@ const Event = {
   // Get today's events
   async getTodayStats() {
     try {
+      ensureDatabaseConnected();
       const today = new Date().toISOString().split('T')[0];
       const result = await pool.query(`
         SELECT
@@ -279,18 +271,7 @@ const Event = {
   // Get the last incomplete sleep event for a user (N+1 query fix)
   async getLastIncompleteSleep(userName) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        return memoryEvents
-          .filter(event =>
-            event.type === 'sleep' &&
-            event.user_name === userName &&
-            event.sleep_start_time &&
-            !event.sleep_end_time
-          )
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-      }
-
+      ensureDatabaseConnected();
       const result = await pool.query(
         `SELECT * FROM baby_events
          WHERE type = 'sleep'
@@ -312,6 +293,7 @@ const Event = {
   // Delete an event
   async delete(id) {
     try {
+      ensureDatabaseConnected();
       await pool.query('DELETE FROM baby_events WHERE id = $1', [id]);
       return true;
     } catch (error) {
@@ -323,6 +305,7 @@ const Event = {
   // Update an event
   async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null) {
     try {
+      ensureDatabaseConnected();
       const result = await pool.query(
         'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4 WHERE id = $5 RETURNING *',
         [type, amount, sleepStartTime, sleepEndTime, id]
