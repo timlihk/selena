@@ -768,12 +768,13 @@ class BabyTracker {
 
             // Render the timeline hours (0, 6, 12, 18, 24)
             const hoursContainer = document.querySelector('.timeline-hours');
-            hoursContainer.innerHTML = '';
+            hoursContainer.innerHTML = '<div></div><div class="timeline-hours-labels"></div><div></div>';
+            const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
             [0, 6, 12, 18, 24].forEach(hour => {
                 const hourDiv = document.createElement('div');
                 hourDiv.className = 'timeline-hour';
                 hourDiv.textContent = `${hour}:00`;
-                hoursContainer.appendChild(hourDiv);
+                labelsContainer.appendChild(hourDiv);
             });
 
             // Render the events

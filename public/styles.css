@@ -430,20 +430,24 @@ header p {
 }
 
 .timeline-hours {
-    display: flex;
-    justify-content: space-between;
-    padding: 0 60px 0 100px;
+    display: grid;
+    grid-template-columns: 100px 1fr 60px;
     margin-bottom: 15px;
     border-bottom: 2px solid #e2e8f0;
     padding-bottom: 8px;
 }
 
+.timeline-hours-labels {
+    grid-column: 2;
+    display: flex;
+    justify-content: space-between;
+}
+
 .timeline-hour {
-    flex: 1;
-    text-align: center;
     font-size: 0.7rem;
     color: #a0aec0;
     font-weight: 500;
+    text-align: center;
 }
 
 .timeline-events {
@@ -453,11 +457,11 @@ header p {
 }
 
 .timeline-lane {
-    display: flex;
+    display: grid;
+    grid-template-columns: 100px 1fr 60px;
     align-items: center;
     min-height: 60px;
     border-bottom: 1px solid #f0f0f0;
-    position: relative;
     padding: 8px 0;
 }
 
@@ -466,7 +470,6 @@ header p {
 }
 
 .timeline-lane-label {
-    width: 90px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -477,12 +480,10 @@ header p {
 }
 
 .timeline-lane-track {
-    flex: 1;
     position: relative;
     height: 40px;
     background: #fafafa;
     border-radius: 20px;
-    margin: 0 10px;
 }
 
 .timeline-marker {
@@ -562,16 +563,19 @@ header p {
 
 @media (max-width: 768px) {
     .timeline-hours {
-        padding: 0 40px 0 70px;
+        grid-template-columns: 70px 1fr 40px;
+    }
+
+    .timeline-hour {
         font-size: 0.6rem;
     }
 
     .timeline-lane {
+        grid-template-columns: 70px 1fr 40px;
         min-height: 50px;
     }
 
     .timeline-lane-label {
-        width: 65px;
         font-size: 0.8rem;
     }
 
