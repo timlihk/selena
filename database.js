@@ -1,6 +1,10 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Timezone configuration
+const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
+const HISTORICAL_DATA_TIMEZONE = process.env.DB_STORAGE_TIMEZONE || 'UTC';
+
 // Database connection configuration
 let pool;
 
@@ -8,15 +12,21 @@ let pool;
 const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
 
 // Initialize pool only when DATABASE_URL is available
-if (process.env.DATABASE_URL) {
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: sslConfig,
-    // Add connection timeout and retry settings
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 30000,
-    max: 20
-  });
+try {
+  if (process.env.DATABASE_URL) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: sslConfig,
+      // Add connection timeout and retry settings
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000,
+      max: 20
+    });
+    console.log('Database pool initialized successfully');
+  }
+} catch (error) {
+  console.error('Database pool initialization failed:', error.message);
+  // Don't throw - allow server to start
 }
 
 // Helper function to check if database is connected
@@ -74,9 +84,9 @@ async function initializeDatabase() {
           type VARCHAR(20) NOT NULL,
           amount INTEGER,
           user_name VARCHAR(50) NOT NULL,
-          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          sleep_start_time TIMESTAMP,
-          sleep_end_time TIMESTAMP
+          timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          sleep_start_time TIMESTAMPTZ,
+          sleep_end_time TIMESTAMPTZ
         )
       `);
 
@@ -109,7 +119,7 @@ async function initializeDatabase() {
         console.log('⚠️  Adding missing sleep_start_time column to baby_events table');
         await client.query(`
           ALTER TABLE baby_events
-          ADD COLUMN sleep_start_time TIMESTAMP
+          ADD COLUMN sleep_start_time TIMESTAMPTZ
         `);
       }
 
@@ -117,9 +127,17 @@ async function initializeDatabase() {
         console.log('⚠️  Adding missing sleep_end_time column to baby_events table');
         await client.query(`
           ALTER TABLE baby_events
-          ADD COLUMN sleep_end_time TIMESTAMP
+          ADD COLUMN sleep_end_time TIMESTAMPTZ
         `);
       }
+
+      await normalizeTimestampColumns(client);
+
+      // Ensure timestamp column keeps an explicit default even after type conversions
+      await client.query(`
+        ALTER TABLE baby_events
+        ALTER COLUMN timestamp SET DEFAULT CURRENT_TIMESTAMP
+      `);
 
       console.log('✅ Database initialized successfully');
     } finally {
@@ -131,6 +149,33 @@ async function initializeDatabase() {
   }
 }
 
+
+async function normalizeTimestampColumns(client) {
+  const TIMESTAMP_COLUMNS = ['timestamp', 'sleep_start_time', 'sleep_end_time'];
+
+  for (const column of TIMESTAMP_COLUMNS) {
+    const { rows } = await client.query(
+      `SELECT data_type
+       FROM information_schema.columns
+       WHERE table_name = 'baby_events'
+         AND column_name = $1
+       LIMIT 1`,
+      [column]
+    );
+
+    const dataType = rows[0]?.data_type;
+    if (dataType === 'timestamp without time zone') {
+      console.log(`⚠️  Converting ${column} to TIMESTAMPTZ using ${HISTORICAL_DATA_TIMEZONE} baseline`);
+      await client.query(
+        `ALTER TABLE baby_events
+         ALTER COLUMN ${column}
+         TYPE TIMESTAMPTZ
+         USING ${column} AT TIME ZONE $1`,
+        [HISTORICAL_DATA_TIMEZONE]
+      );
+    }
+  }
+}
 
 // Event operations
 const Event = {
@@ -236,6 +281,7 @@ const Event = {
   async getTodayStats() {
     try {
       ensureDatabaseConnected();
+      // Simplified query: Get all events where the date (in home timezone) matches today
       const result = await pool.query(`
         SELECT
           COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
@@ -245,19 +291,19 @@ const Event = {
           COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
           COALESCE(SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END), 0) as total_sleep_minutes
         FROM baby_events
-        WHERE DATE(timestamp) = CURRENT_DATE
-      `);
+        WHERE DATE(timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+      `, [HOME_TIMEZONE]);
 
-      const row = result.rows[0];
+      const row = result.rows[0] || {};
 
       // Format the stats
       const stats = {
-        milk: parseInt(row.milk_count) || 0,
-        poo: parseInt(row.poo_count) || 0,
-        bath: parseInt(row.bath_count) || 0,
-        sleep: parseInt(row.sleep_count) || 0,
-        totalMilk: parseInt(row.total_milk) || 0,
-        totalSleepHours: Math.round((parseInt(row.total_sleep_minutes) / 60) * 10) / 10 // Round to 1 decimal place
+        milk: parseInt(row.milk_count, 10) || 0,
+        poo: parseInt(row.poo_count, 10) || 0,
+        bath: parseInt(row.bath_count, 10) || 0,
+        sleep: parseInt(row.sleep_count, 10) || 0,
+        totalMilk: parseInt(row.total_milk, 10) || 0,
+        totalSleepHours: Math.round(((parseInt(row.total_sleep_minutes, 10) || 0) / 60) * 10) / 10
       };
 
       return stats;
