@@ -352,6 +352,5 @@ module.exports = {
   pool,
   initializeDatabase,
   Event,
-  testConnection,
-  resetMemoryStore
+  testConnection
 };
