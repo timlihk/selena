@@ -4,34 +4,28 @@ require('dotenv').config();
 // Database connection configuration
 let pool;
 
+// Require DATABASE_URL environment variable
 if (!process.env.DATABASE_URL) {
-  // For environments without database URL, use in-memory storage
-  console.log('⚠️  No DATABASE_URL found - using in-memory storage');
-  pool = null;
-} else {
-  // For Railway and other cloud platforms, always use SSL
-  const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
-
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: sslConfig,
-    // Add connection timeout and retry settings
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 30000,
-    max: 20
-  });
+  throw new Error('DATABASE_URL environment variable is required');
 }
+
+// For Railway and other cloud platforms, always use SSL
+const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
+
+pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: sslConfig,
+  // Add connection timeout and retry settings
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 20
+});
 
 // Test database connection
 async function testConnection() {
   try {
     console.log('🔌 Testing database connection...');
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-
-    if (pool === null) {
-      console.log('✅ No DATABASE_URL - using in-memory storage');
-      return true;
-    }
 
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL environment variable is not set');
@@ -132,26 +126,12 @@ async function initializeDatabase() {
   }
 }
 
-// In-memory storage for development
-let memoryEvents = [];
-let nextId = 1;
-
-function resetMemoryStore() {
-  if (pool === null) {
-    memoryEvents = [];
-    nextId = 1;
-  }
-}
 
 // Event operations
 const Event = {
   // Get event by ID
   async getById(id) {
     try {
-      if (pool === null) {
-        return memoryEvents.find(event => event.id === parseInt(id));
-      }
-
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE id = $1 LIMIT 1',
         [id]
@@ -166,13 +146,6 @@ const Event = {
   // Get events by type
   async getByType(type) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        return memoryEvents
-          .filter(event => event.type === type)
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      }
-
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE type = $1 ORDER BY timestamp DESC',
         [type]
@@ -187,11 +160,6 @@ const Event = {
   // Get all events
   async getAll() {
     try {
-      if (pool === null) {
-        // In-memory mode
-        return memoryEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      }
-
       const result = await pool.query(
         'SELECT * FROM baby_events ORDER BY timestamp DESC'
       );
@@ -205,23 +173,6 @@ const Event = {
   // Get filtered events
   async getFiltered(filter) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        let filteredEvents = [...memoryEvents];
-
-        if (filter.startDate) {
-          const start = new Date(filter.startDate);
-          filteredEvents = filteredEvents.filter(event => new Date(event.timestamp) >= start);
-        }
-
-        if (filter.endDate) {
-          const end = new Date(filter.endDate);
-          filteredEvents = filteredEvents.filter(event => new Date(event.timestamp) <= end);
-        }
-
-        return filteredEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      }
-
       let query = 'SELECT * FROM baby_events';
       let params = [];
       let conditions = [];
@@ -273,21 +224,6 @@ const Event = {
   // Create a new event
   async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        const event = {
-          id: nextId++,
-          type,
-          amount,
-          user_name: userName,
-          timestamp: new Date().toISOString(),
-          sleep_start_time: sleepStartTime,
-          sleep_end_time: sleepEndTime
-        };
-        memoryEvents.push(event);
-        return event;
-      }
-
       const result = await pool.query(
         'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [type, amount, userName, sleepStartTime, sleepEndTime]
@@ -297,8 +233,6 @@ const Event = {
       console.error('❌ Database error creating event:', error);
       console.error('❌ Database error details:', {
         type, amount, userName, sleepStartTime, sleepEndTime,
-        poolExists: pool !== null,
-        poolType: pool ? 'PostgreSQL' : 'In-memory',
         DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
         NODE_ENV: process.env.NODE_ENV,
         RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT
@@ -310,38 +244,6 @@ const Event = {
   // Get today's events
   async getTodayStats() {
     try {
-      if (pool === null) {
-        // In-memory mode
-        const today = new Date().toISOString().split('T')[0];
-        const todayEvents = memoryEvents.filter(event =>
-          event.timestamp.split('T')[0] === today
-        );
-
-        const stats = {
-          milk: 0,
-          poo: 0,
-          bath: 0,
-          totalMilk: 0,
-          totalSleepHours: 0
-        };
-
-        let totalSleepMinutes = 0;
-
-        todayEvents.forEach(event => {
-          stats[event.type] = (stats[event.type] || 0) + 1;
-          if (event.type === 'milk' && event.amount) {
-            stats.totalMilk += event.amount;
-          }
-          if (event.type === 'sleep' && event.amount) {
-            totalSleepMinutes += event.amount;
-          }
-        });
-
-        stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10;
-
-        return stats;
-      }
-
       const result = await pool.query(`
         SELECT
           type,
@@ -362,16 +264,18 @@ const Event = {
         totalSleepHours: 0
       };
 
+      // Process individual event type counts
       result.rows.forEach(row => {
         stats[row.type] = parseInt(row.count);
-        if (row.type === 'milk') {
-          stats.totalMilk = parseInt(row.total_milk) || 0;
-        }
       });
 
-      // Calculate total sleep hours from minutes
-      const totalSleepMinutes = result.rows.find(row => row.type === 'sleep')?.total_sleep_minutes || 0;
-      stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10; // Round to 1 decimal place
+      // Extract total milk and sleep minutes from any row (they're the same across all rows)
+      const firstRow = result.rows[0];
+      if (firstRow) {
+        stats.totalMilk = parseInt(firstRow.total_milk) || 0;
+        const totalSleepMinutes = parseInt(firstRow.total_sleep_minutes) || 0;
+        stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10; // Round to 1 decimal place
+      }
 
       return stats;
     } catch (error) {
@@ -416,16 +320,6 @@ const Event = {
   // Delete an event
   async delete(id) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        const index = memoryEvents.findIndex(event => event.id === parseInt(id));
-        if (index === -1) {
-          throw new Error('Event not found');
-        }
-        memoryEvents.splice(index, 1);
-        return true;
-      }
-
       await pool.query('DELETE FROM baby_events WHERE id = $1', [id]);
       return true;
     } catch (error) {
@@ -437,20 +331,6 @@ const Event = {
   // Update an event
   async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null) {
     try {
-      if (pool === null) {
-        // In-memory mode
-        const event = memoryEvents.find(event => event.id === parseInt(id));
-        if (!event) {
-          throw new Error('Event not found');
-        }
-        event.type = type;
-        event.amount = amount;
-        event.timestamp = new Date().toISOString();
-        if (sleepStartTime !== undefined) event.sleep_start_time = sleepStartTime;
-        if (sleepEndTime !== undefined) event.sleep_end_time = sleepEndTime;
-        return event;
-      }
-
       const result = await pool.query(
         'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4 WHERE id = $5 RETURNING *',
         [type, amount, sleepStartTime, sleepEndTime, id]
