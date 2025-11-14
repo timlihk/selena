@@ -166,12 +166,12 @@ async function normalizeTimestampColumns(client) {
     const dataType = rows[0]?.data_type;
     if (dataType === 'timestamp without time zone') {
       console.log(`⚠️  Converting ${column} to TIMESTAMPTZ using ${HISTORICAL_DATA_TIMEZONE} baseline`);
+      // Use string interpolation for both column and timezone since they're from controlled sources
       await client.query(
         `ALTER TABLE baby_events
          ALTER COLUMN ${column}
          TYPE TIMESTAMPTZ
-         USING ${column} AT TIME ZONE $1`,
-        [HISTORICAL_DATA_TIMEZONE]
+         USING ${column} AT TIME ZONE '${HISTORICAL_DATA_TIMEZONE}'`
       );
     }
   }
