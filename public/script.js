@@ -8,6 +8,7 @@ class BabyTracker {
         this.bindEvents();
         await this.loadEvents();
         await this.updateStats();
+        await this.renderTimeline();
     }
 
     bindEvents() {
@@ -202,10 +203,12 @@ class BabyTracker {
             }
             this.events = await response.json();
             this.renderEvents();
+            await this.renderTimeline();
         } catch (error) {
             console.error('Error loading events:', error);
             this.events = [];
             this.renderEvents();
+            await this.renderTimeline();
         }
     }
 
@@ -356,6 +359,7 @@ class BabyTracker {
 
                 await this.loadEvents();
                 await this.updateStats();
+                await this.renderTimeline();
             } catch (error) {
                 console.error('Error removing event:', error);
                 alert('Failed to remove event');
@@ -747,6 +751,103 @@ class BabyTracker {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    async renderTimeline() {
+        try {
+            // Get today's events
+            const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+            // Filter events from today
+            const todayEvents = this.events.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= startOfDay && eventDate <= endOfDay;
+            });
+
+            // Render the timeline hours (0-23)
+            const hoursContainer = document.querySelector('.timeline-hours');
+            hoursContainer.innerHTML = '';
+            for (let hour = 0; hour < 24; hour++) {
+                const hourDiv = document.createElement('div');
+                hourDiv.className = 'timeline-hour';
+                hourDiv.textContent = `${hour}:00`;
+                hoursContainer.appendChild(hourDiv);
+            }
+
+            // Render the events
+            const eventsContainer = document.querySelector('.timeline-events');
+            eventsContainer.innerHTML = '';
+
+            if (todayEvents.length === 0) {
+                eventsContainer.innerHTML = '<div class="timeline-empty">No events recorded today yet</div>';
+                return;
+            }
+
+            // Event icons
+            const eventIcons = {
+                milk: '🍼',
+                poo: '💩',
+                bath: '🛁',
+                sleep: '😴'
+            };
+
+            // Sort events by time
+            todayEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            // Calculate positions and render events
+            todayEvents.forEach((event, index) => {
+                const eventDate = new Date(event.timestamp);
+                const hour = eventDate.getHours();
+                const minute = eventDate.getMinutes();
+
+                // Calculate position (percentage across the 24-hour timeline)
+                const timeInMinutes = hour * 60 + minute;
+                const leftPosition = (timeInMinutes / (24 * 60)) * 100;
+
+                // Format time for tooltip
+                const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+                // Create event element
+                const eventDiv = document.createElement('div');
+                eventDiv.className = `timeline-event ${event.type}`;
+                eventDiv.style.left = `${leftPosition}%`;
+
+                // Vertical positioning to avoid overlap
+                const row = index % 3;
+                eventDiv.style.top = `${10 + (row * 35)}px`;
+
+                // Add icon
+                eventDiv.textContent = eventIcons[event.type] || '•';
+
+                // Create tooltip
+                const tooltip = document.createElement('div');
+                tooltip.className = 'timeline-event-tooltip';
+                let tooltipText = `${timeString} - ${event.type}`;
+                if (event.type === 'milk' && event.amount) {
+                    tooltipText += ` (${event.amount}ml)`;
+                } else if (event.type === 'sleep' && event.amount) {
+                    tooltipText += ` (${event.amount} min)`;
+                }
+                if (event.user_name) {
+                    tooltipText += ` - ${event.user_name}`;
+                }
+                tooltip.textContent = tooltipText;
+
+                eventDiv.appendChild(tooltip);
+                eventsContainer.appendChild(eventDiv);
+            });
+
+            // Adjust container height based on number of events
+            const minRows = Math.min(3, Math.ceil(todayEvents.length / 8));
+            eventsContainer.style.minHeight = `${minRows * 35 + 20}px`;
+
+        } catch (error) {
+            console.error('Error rendering timeline:', error);
+            const eventsContainer = document.querySelector('.timeline-events');
+            eventsContainer.innerHTML = '<div class="timeline-empty">Error loading timeline</div>';
+        }
     }
 
 }
