@@ -311,13 +311,23 @@ app.get('/health', async (req, res) => {
 // Initialize database and start server
 async function startServer() {
   try {
-    await initializeDatabase();
-
+    // Start server immediately (don't wait for DB init to complete)
+    // This prevents Railway timeout during startup
     app.listen(PORT, () => {
       console.log(`🚀 Baby Tracker server running on port ${PORT}`);
       console.log(`📱 Open http://localhost:${PORT} to view the app`);
-      console.log(`🗄️  Database connected successfully`);
     });
+
+    // Initialize database in background
+    setTimeout(async () => {
+      try {
+        await initializeDatabase();
+        console.log(`🗄️  Database initialized successfully`);
+      } catch (error) {
+        console.error('❌ Failed to initialize database:', error);
+        // Don't exit - server can still serve frontend and show error in health check
+      }
+    }, 100);
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
