@@ -246,36 +246,27 @@ const Event = {
     try {
       const result = await pool.query(`
         SELECT
-          type,
-          COUNT(*) as count,
-          SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END) as total_milk,
-          SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END) as total_sleep_minutes
+          COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
+          COUNT(CASE WHEN type = 'poo' THEN 1 END) as poo_count,
+          COUNT(CASE WHEN type = 'bath' THEN 1 END) as bath_count,
+          COUNT(CASE WHEN type = 'sleep' THEN 1 END) as sleep_count,
+          COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
+          COALESCE(SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END), 0) as total_sleep_minutes
         FROM baby_events
         WHERE DATE(timestamp) = CURRENT_DATE
-        GROUP BY type
       `);
+
+      const row = result.rows[0];
 
       // Format the stats
       const stats = {
-        milk: 0,
-        poo: 0,
-        bath: 0,
-        totalMilk: 0,
-        totalSleepHours: 0
+        milk: parseInt(row.milk_count) || 0,
+        poo: parseInt(row.poo_count) || 0,
+        bath: parseInt(row.bath_count) || 0,
+        sleep: parseInt(row.sleep_count) || 0,
+        totalMilk: parseInt(row.total_milk) || 0,
+        totalSleepHours: Math.round((parseInt(row.total_sleep_minutes) / 60) * 10) / 10 // Round to 1 decimal place
       };
-
-      // Process individual event type counts
-      result.rows.forEach(row => {
-        stats[row.type] = parseInt(row.count);
-      });
-
-      // Extract total milk and sleep minutes from any row (they're the same across all rows)
-      const firstRow = result.rows[0];
-      if (firstRow) {
-        stats.totalMilk = parseInt(firstRow.total_milk) || 0;
-        const totalSleepMinutes = parseInt(firstRow.total_sleep_minutes) || 0;
-        stats.totalSleepHours = Math.round((totalSleepMinutes / 60) * 10) / 10; // Round to 1 decimal place
-      }
 
       return stats;
     } catch (error) {
