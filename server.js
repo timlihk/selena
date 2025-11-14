@@ -311,13 +311,43 @@ app.get('/health', async (req, res) => {
 // Initialize database and start server
 async function startServer() {
   try {
-    await initializeDatabase();
+    // Check if DATABASE_URL is set before starting
+    if (!process.env.DATABASE_URL) {
+      console.error('⚠️  WARNING: DATABASE_URL environment variable is not set!');
+      console.error('⚠️  Database features will NOT work.');
+      console.error('⚠️  To fix this in Railway:');
+      console.error('⚠️    1. Go to your Railway project dashboard');
+      console.error('⚠️    2. Click "+ New" → "Database" → "PostgreSQL"');
+      console.error('⚠️    3. Railway will automatically set DATABASE_URL');
+      console.error('⚠️    4. Redeploy your application');
+      console.error('');
+    }
 
+    // Start server immediately (don't wait for DB init to complete)
+    // This prevents Railway timeout during startup
     app.listen(PORT, () => {
       console.log(`🚀 Baby Tracker server running on port ${PORT}`);
       console.log(`📱 Open http://localhost:${PORT} to view the app`);
-      console.log(`🗄️  Database connected successfully`);
+      if (!process.env.DATABASE_URL) {
+        console.log(`⚠️  Server started but DATABASE is NOT connected`);
+      }
     });
+
+    // Initialize database in background
+    setTimeout(async () => {
+      try {
+        if (process.env.DATABASE_URL) {
+          await initializeDatabase();
+          console.log(`🗄️  Database initialized successfully`);
+        } else {
+          console.log(`⚠️  Skipping database initialization - DATABASE_URL not set`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize database:', error);
+        console.error('❌ Please check your DATABASE_URL configuration');
+        // Don't exit - server can still serve frontend and show error in health check
+      }
+    }, 100);
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
