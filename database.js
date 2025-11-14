@@ -244,6 +244,7 @@ const Event = {
   // Get today's events
   async getTodayStats() {
     try {
+      const today = new Date().toISOString().split('T')[0];
       const result = await pool.query(`
         SELECT
           COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
@@ -253,8 +254,8 @@ const Event = {
           COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
           COALESCE(SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END), 0) as total_sleep_minutes
         FROM baby_events
-        WHERE DATE(timestamp) = CURRENT_DATE
-      `);
+        WHERE DATE(timestamp) = $1
+      `, [today]);
 
       const row = result.rows[0];
 
