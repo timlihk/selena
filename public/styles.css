@@ -126,12 +126,13 @@ header p {
     background: #f7fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 10px;
+    padding: 12px 15px;
+    margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     animation: slideIn 0.3s ease;
+    min-height: 50px;
 }
 
 @keyframes slideIn {
@@ -148,33 +149,54 @@ header p {
 .event-info {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
 }
 
 .event-icon {
     font-size: 1.5rem;
+    flex-shrink: 0;
 }
 
 .event-details {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
 }
 
 .event-type {
     font-weight: 600;
     color: #4a5568;
+    white-space: nowrap;
 }
 
 .event-time {
     font-size: 0.9rem;
     color: #718096;
+    white-space: nowrap;
+}
+
+.event-time::before {
+    content: '•';
+    margin-right: 8px;
+    color: #cbd5e0;
 }
 
 .event-user {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     color: #38a169;
     font-weight: 600;
-    margin-top: 2px;
+    white-space: nowrap;
+}
+
+.event-user::before {
+    content: '•';
+    margin-right: 8px;
+    color: #cbd5e0;
 }
 
 .event-amount {
