@@ -981,16 +981,35 @@ class BabyTracker {
         if (!timestamp) {
             return '--:--';
         }
+
+        let sourceValue = timestamp;
+        if (typeof sourceValue === 'object') {
+            if (sourceValue instanceof Date) {
+                // already a date
+            } else if (sourceValue.value) {
+                sourceValue = sourceValue.value;
+            } else if (typeof sourceValue.toISOString === 'function') {
+                sourceValue = sourceValue.toISOString();
+            } else {
+                sourceValue = String(sourceValue);
+            }
+        }
+
+        const date = sourceValue instanceof Date ? sourceValue : new Date(sourceValue);
+        if (isNaN(date.getTime())) {
+            return '--:--';
+        }
+
         try {
             return new Intl.DateTimeFormat('en-US', {
                 timeZone: this.homeTimezone || this.localTimezone,
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: true
-            }).format(new Date(timestamp));
+            }).format(date);
         } catch (error) {
             console.error('Failed to format display time', error);
-            return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
     }
 
