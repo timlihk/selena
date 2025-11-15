@@ -83,8 +83,13 @@ header p {
 }
 
 .form-group-inline label {
-    min-width: 100px;
+    min-width: 140px;
     margin: 0;
+}
+
+.form-group-inline select,
+.form-group-inline input {
+    flex: 1;
 }
 
 .form-group select, .form-group input {
