@@ -377,7 +377,7 @@ class BabyTracker {
 
         const eventTimeSpan = document.createElement('span');
         eventTimeSpan.className = 'event-time';
-        eventTimeSpan.textContent = eventTime;
+        eventTimeSpan.textContent = this.formatDisplayTime(event.timestamp);
 
         const eventUser = document.createElement('span');
         eventUser.className = 'event-user';
@@ -974,6 +974,23 @@ class BabyTracker {
         } catch (error) {
             console.error('Failed to convert input time using timezone', error);
             return parsed.toISOString();
+        }
+    }
+
+    formatDisplayTime(timestamp) {
+        if (!timestamp) {
+            return '--:--';
+        }
+        try {
+            return new Intl.DateTimeFormat('en-US', {
+                timeZone: this.homeTimezone || this.localTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            }).format(new Date(timestamp));
+        } catch (error) {
+            console.error('Failed to format display time', error);
+            return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
     }
 
