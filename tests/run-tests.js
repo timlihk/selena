@@ -118,6 +118,26 @@ async function testDateFilterRespectsTimezoneBoundaries() {
   );
 }
 
+async function testUpdateAllowsTimestampChange() {
+  resetMemoryStore();
+  const originalTimestamp = '2024-01-01T00:00:00.000Z';
+  const updatedTimestamp = '2024-01-02T03:04:00.000Z';
+
+  const createdEvent = await Event.create('milk', 100, 'Tim', null, null, null, originalTimestamp);
+
+  const req = {
+    params: { id: createdEvent.id.toString() },
+    body: { type: 'milk', amount: 110, timestamp: updatedTimestamp }
+  };
+  const res = createMockResponse();
+
+  await updateEventHandler(req, res);
+
+  assert.strictEqual(res.statusCode, 200, 'Update with timestamp should succeed');
+  assert.strictEqual(res.jsonData.amount, 110, 'Amount should update');
+  assert.strictEqual(res.jsonData.timestamp, updatedTimestamp, 'Timestamp should update');
+}
+
 async function run() {
   await initializeDatabase();
 
@@ -126,6 +146,7 @@ async function run() {
   await testSleepUpdatePreservesTimestamps();
   await testMemoryStorePreservesProvidedTimestamp();
   await testDateFilterRespectsTimezoneBoundaries();
+  await testUpdateAllowsTimestampChange();
 
   console.log('All tests passed');
 }

@@ -339,12 +339,6 @@ class BabyTracker {
             sleep: 'Sleep Session'
         };
 
-        const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-
         // Create DOM elements safely
         const eventItem = document.createElement('div');
         eventItem.className = 'event-item';
@@ -525,10 +519,12 @@ class BabyTracker {
         eventDetails.appendChild(typeSelect);
 
         // Create time display
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'event-time';
-        timeSpan.textContent = eventTime;
-        eventDetails.appendChild(timeSpan);
+        const timeInput = document.createElement('input');
+        timeInput.type = 'datetime-local';
+        timeInput.className = 'edit-time';
+        timeInput.value = this.formatDateTimeLocal(event.timestamp);
+        timeInput.setAttribute('aria-label', 'Event time');
+        eventDetails.appendChild(timeInput);
 
         eventInfo.appendChild(eventDetails);
         eventItem.appendChild(eventInfo);
@@ -631,6 +627,7 @@ class BabyTracker {
         const typeSelect = eventItem.querySelector('.edit-type');
         const amountInput = eventItem.querySelector('.edit-amount');
         const diaperSubtypeSelect = eventItem.querySelector('.edit-diaper-subtype');
+        const timeInput = eventItem.querySelector('.edit-time');
 
         const newType = typeSelect.value;
         let newAmount = null;
@@ -652,10 +649,22 @@ class BabyTracker {
             diaperSubtype = diaperSubtypeSelect.value;
         }
 
+        if (!timeInput || !timeInput.value) {
+            alert('Please select a valid date and time');
+            return;
+        }
+
+        const parsedTime = new Date(timeInput.value);
+        if (isNaN(parsedTime.getTime())) {
+            alert('Please enter a valid date and time');
+            return;
+        }
+
         try {
             const requestBody = {
                 type: newType,
-                amount: newAmount
+                amount: newAmount,
+                timestamp: parsedTime.toISOString()
             };
 
             if (newType === 'diaper') {
@@ -891,6 +900,22 @@ class BabyTracker {
         `);
         printWindow.document.close();
         printWindow.print();
+    }
+
+    formatDateTimeLocal(timestamp) {
+        if (!timestamp) {
+            return '';
+        }
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+            return '';
+        }
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
     formatLocalDate(date) {

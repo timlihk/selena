@@ -262,7 +262,7 @@ app.delete('/api/events/:id', async (req, res) => {
 async function updateEventHandler(req, res) {
   try {
     const { id } = req.params;
-    const { type, amount, diaperSubtype } = req.body;
+    const { type, amount, diaperSubtype, timestamp } = req.body;
 
     const eventId = parseInt(id, 10);
 
@@ -284,6 +284,7 @@ async function updateEventHandler(req, res) {
     }
 
     let normalizedAmount = null;
+    let normalizedTimestamp = null;
 
     if (type === 'milk') {
       const parsedAmount = parseInt(amount, 10);
@@ -297,6 +298,21 @@ async function updateEventHandler(req, res) {
         return res.status(400).json({ error: 'Sleep duration is required and must be a valid positive number' });
       }
       normalizedAmount = parsedAmount;
+    }
+
+    if (timestamp !== undefined) {
+      if (!timestamp) {
+        return res.status(400).json({ error: 'Timestamp is required when provided' });
+      }
+
+      const parsedTimestamp = new Date(timestamp);
+      if (Number.isNaN(parsedTimestamp.getTime())) {
+        return res.status(400).json({ error: 'Invalid timestamp format' });
+      }
+      if (parsedTimestamp > new Date()) {
+        return res.status(400).json({ error: 'Timestamp cannot be in the future' });
+      }
+      normalizedTimestamp = parsedTimestamp.toISOString();
     }
 
     // Validate diaper subtype if type is diaper
@@ -318,13 +334,16 @@ async function updateEventHandler(req, res) {
     const existingSleepStart = existingEvent.sleep_start_time ?? existingEvent.sleepStartTime ?? null;
     const existingSleepEnd = existingEvent.sleep_end_time ?? existingEvent.sleepEndTime ?? null;
 
+    const existingTimestamp = existingEvent.timestamp ? new Date(existingEvent.timestamp).toISOString() : null;
+
     const event = await Event.update(
       eventId,
       type,
       normalizedAmount,
       preserveSleepTimestamps ? existingSleepStart : null,
       preserveSleepTimestamps ? existingSleepEnd : null,
-      eventSubtype
+      eventSubtype,
+      normalizedTimestamp || existingTimestamp
     );
     res.json(event);
   } catch (error) {

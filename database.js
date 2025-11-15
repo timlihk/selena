@@ -574,26 +574,32 @@ const Event = {
   },
 
   // Update an event
-  async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null, subtype = null) {
+  async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null, subtype = null, timestamp = null) {
     try {
       if (useMemoryStore) {
         const index = findMemoryEventIndexById(id);
         if (index === -1) {
           throw new Error('Event not found');
         }
-        return updateMemoryEvent(index, {
+        const updates = {
           type,
           amount,
           sleep_start_time: ensureMemoryTimestamp(sleepStartTime),
           sleep_end_time: ensureMemoryTimestamp(sleepEndTime),
           subtype
-        });
+        };
+
+        const normalizedTimestamp = ensureMemoryTimestamp(timestamp);
+        if (normalizedTimestamp) {
+          updates.timestamp = normalizedTimestamp;
+        }
+        return updateMemoryEvent(index, updates);
       }
 
       ensureDatabaseConnected();
       const result = await pool.query(
-        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4, subtype = $5 WHERE id = $6 RETURNING *',
-        [type, amount, sleepStartTime, sleepEndTime, subtype, id]
+        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4, subtype = $5, timestamp = COALESCE($6, timestamp) WHERE id = $7 RETURNING *',
+        [type, amount, sleepStartTime, sleepEndTime, subtype, timestamp, id]
       );
 
       if (result.rows.length === 0) {
