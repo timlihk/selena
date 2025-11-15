@@ -935,18 +935,19 @@ class BabyTracker {
             const eventTypes = [
                 { type: 'milk', icon: '🍼', label: 'Milk' },
                 { type: 'diaper', icon: '💩', label: 'Diaper' },
-                { type: 'poo', icon: '💩', label: 'Poo' },
                 { type: 'bath', icon: '🛁', label: 'Bath' },
                 { type: 'sleep', icon: '😴', label: 'Sleep' }
             ];
 
-            // Group events by type
+            // Group events by type (consolidate poo into diaper)
             const eventsByType = {};
             todayEvents.forEach(event => {
-                if (!eventsByType[event.type]) {
-                    eventsByType[event.type] = [];
+                // Consolidate legacy 'poo' events into 'diaper'
+                const eventType = event.type === 'poo' ? 'diaper' : event.type;
+                if (!eventsByType[eventType]) {
+                    eventsByType[eventType] = [];
                 }
-                eventsByType[event.type].push(event);
+                eventsByType[eventType].push(event);
             });
 
             // Create a lane for each event type
@@ -974,20 +975,43 @@ class BabyTracker {
                     const leftPosition = (timeInMinutes / (24 * 60)) * 100;
                     const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 
-                    // Create marker
+                    // Create marker with specific class for diaper subtypes
                     const marker = document.createElement('div');
-                    marker.className = `timeline-marker ${type}`;
+                    let markerClass = type;
+                    let diaperLabel = '';
+
+                    // For diaper events, use different classes based on subtype
+                    if (type === 'diaper') {
+                        const subtype = event.subtype || 'poo'; // Default to poo for legacy events
+                        markerClass = `diaper-${subtype}`;
+
+                        // Set label for tooltip
+                        if (subtype === 'pee') {
+                            diaperLabel = 'Pee 💧';
+                        } else if (subtype === 'poo') {
+                            diaperLabel = 'Poo 💩';
+                        } else if (subtype === 'both') {
+                            diaperLabel = 'Pee & Poo 💧💩';
+                        }
+                    }
+
+                    marker.className = `timeline-marker ${markerClass}`;
                     marker.style.left = `${leftPosition}%`;
 
                     // Create tooltip
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';
                     let tooltipText = `${timeString}`;
-                    if (event.type === 'milk' && event.amount) {
+
+                    // Add diaper subtype label
+                    if (type === 'diaper' && diaperLabel) {
+                        tooltipText += ` • ${diaperLabel}`;
+                    } else if (event.type === 'milk' && event.amount) {
                         tooltipText += ` • ${event.amount}ml`;
                     } else if (event.type === 'sleep' && event.amount) {
                         tooltipText += ` • ${event.amount} min`;
                     }
+
                     if (event.user_name) {
                         tooltipText += `\n${event.user_name}`;
                     }

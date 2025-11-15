@@ -630,8 +630,20 @@ header p {
     background: #667eea;
 }
 
+.timeline-marker.diaper-pee {
+    background: #4facfe;  /* Blue for pee */
+}
+
+.timeline-marker.diaper-poo {
+    background: #8b6914;  /* Brown for poo */
+}
+
+.timeline-marker.diaper-both {
+    background: linear-gradient(135deg, #4facfe 0%, #8b6914 100%);  /* Blue to brown gradient */
+}
+
 .timeline-marker.poo {
-    background: #f093fb;
+    background: #f093fb;  /* Legacy poo (shouldn't appear now) */
 }
 
 .timeline-marker.bath {
