@@ -245,11 +245,6 @@ async function initializeDatabase() {
         ON baby_events (type, timestamp DESC)
       `);
 
-      await client.query(`
-        CREATE INDEX IF NOT EXISTS idx_baby_events_date
-        ON baby_events ((DATE(timestamp)))
-      `);
-
       console.log('✅ Database initialized successfully');
     } finally {
       client.release();
