@@ -1,6 +1,7 @@
 const assert = require('assert');
 
 process.env.NODE_ENV = 'test';
+process.env.BABY_HOME_TIMEZONE = 'Asia/Hong_Kong';
 delete process.env.DATABASE_URL;
 
 const { getEventsHandler, updateEventHandler } = require('../server');
@@ -78,12 +79,53 @@ async function testSleepUpdatePreservesTimestamps() {
   assert.strictEqual(res.jsonData.sleep_end_time, initialEnd, 'Sleep end should remain unchanged');
 }
 
+async function testMemoryStorePreservesProvidedTimestamp() {
+  resetMemoryStore();
+  const customTimestamp = '2024-02-01T12:34:00.000Z';
+
+  const createdEvent = await Event.create('milk', 90, 'Tim', null, null, null, customTimestamp);
+  assert.strictEqual(createdEvent.timestamp, customTimestamp, 'Created event should use provided timestamp');
+
+  const events = await Event.getAll();
+  assert.strictEqual(events.length, 1, 'Should have one event stored');
+  assert.strictEqual(events[0].timestamp, customTimestamp, 'Stored event should retain provided timestamp');
+}
+
+async function testDateFilterRespectsTimezoneBoundaries() {
+  resetMemoryStore();
+
+  // Asia/Hong_Kong is UTC+8
+  await Event.create('milk', 60, 'Tim', null, null, null, '2024-03-04T18:30:00.000Z'); // 2024-03-05 02:30 local
+  await Event.create('milk', 80, 'Angie', null, null, null, '2024-03-05T05:00:00.000Z'); // 2024-03-05 13:00 local
+  await Event.create('milk', 50, 'Tim', null, null, null, '2024-03-05T16:30:00.000Z'); // 2024-03-06 00:30 local (should be excluded)
+
+  const req = {
+    query: {
+      filter: JSON.stringify({ startDate: '2024-03-05', endDate: '2024-03-05' })
+    }
+  };
+  const res = createMockResponse();
+
+  await getEventsHandler(req, res);
+
+  assert.strictEqual(res.statusCode, 200, 'Filter request should succeed');
+  assert.strictEqual(res.jsonData.length, 2, 'Should include only events that fall on 2024-03-05 in home timezone');
+  const timestamps = res.jsonData.map(event => event.timestamp).sort();
+  assert.deepStrictEqual(
+    timestamps,
+    ['2024-03-04T18:30:00.000Z', '2024-03-05T05:00:00.000Z'],
+    'Filter should include overnight events using timezone boundaries'
+  );
+}
+
 async function run() {
   await initializeDatabase();
 
   await testInvalidFilterReturns400();
   await testTypeFilterReturnsOnlyRequestedType();
   await testSleepUpdatePreservesTimestamps();
+  await testMemoryStorePreservesProvidedTimestamp();
+  await testDateFilterRespectsTimezoneBoundaries();
 
   console.log('All tests passed');
 }

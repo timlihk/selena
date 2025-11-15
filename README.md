@@ -6,8 +6,9 @@ A full-stack web application for tracking newborn baby activities including milk
 
 ## ✨ Features
 
-- **📊 Event Tracking**: Record milk feeds (with ml amount), diaper changes, and bath times
+- **📊 Event Tracking**: Record milk feeds (with ml amount), diaper changes (pee/poo/both), bath times, and guided sleep sessions
 - **📈 Real-time Statistics**: View today's summary with event counts and total milk consumption
+- **😴 Smart Sleep Tracking**: Fall-asleep/wake-up buttons automatically calculate sleep duration and close open sessions
 - **📱 Responsive Design**: Mobile-first design that works on all devices
 - **💾 Data Persistence**: PostgreSQL database for reliable data storage
 - **🎨 Beautiful UI**: Clean, modern interface with smooth animations
@@ -42,6 +43,8 @@ A full-stack web application for tracking newborn baby activities including milk
    ```
 
 4. **Open http://localhost:3000** in your browser
+
+> **Note:** When `DATABASE_URL` is not configured the app automatically falls back to an in-memory datastore. This mode is perfect for local development and automated tests but should never be used for production deployments because data will be lost on restart.
 
 ## 🏗️ Architecture
 
@@ -78,7 +81,10 @@ CREATE TABLE baby_events (
   id SERIAL PRIMARY KEY,
   type VARCHAR(20) NOT NULL,
   amount INTEGER,
-  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  user_name VARCHAR(50) NOT NULL,
+  timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  sleep_start_time TIMESTAMPTZ,
+  sleep_end_time TIMESTAMPTZ
 );
 ```
 
@@ -96,21 +102,29 @@ CREATE TABLE baby_events (
 | `DATABASE_URL` | PostgreSQL connection string | ✅ | - |
 | `NODE_ENV` | Environment (development/production) | ❌ | development |
 | `PORT` | Server port | ❌ | 3000 |
+| `BABY_HOME_TIMEZONE` | Olson timezone used for "today" calculations | ❌ | Asia/Hong_Kong |
+| `DB_STORAGE_TIMEZONE` | Timezone legacy timestamps were recorded in (used only during automatic migrations) | ❌ | UTC |
 
 ### Example `.env` file:
 ```env
 DATABASE_URL=postgresql://username:password@localhost:5432/baby_tracker
 NODE_ENV=development
 PORT=3000
+BABY_HOME_TIMEZONE=Asia/Hong_Kong
+DB_STORAGE_TIMEZONE=UTC
 ```
 
 ## 🎯 Usage Guide
 
 ### Adding Events
 
-1. **Select Event Type**: Choose from Milk, Poo-poo, or Bath
-2. **Enter Amount** (for Milk only): Specify milk consumption in ml
-3. **Add Event**: Click "Add Event" to record the activity
+1. **Select Event Type**: Choose from Milk, Diaper Change, Bath, or Sleep
+2. **Set Details**:
+   - Milk: enter the amount in ml
+   - Diaper: choose pee/poo/both using the buttons
+   - Sleep: use the dedicated Fall Asleep / Wake Up buttons instead of the main form
+3. **Identify the Recorder**: Pick the caregiver under "Who is recording"
+4. **Add Event**: Click "Add Event" (or the sleep buttons) to record the activity
 
 ### Viewing Data
 
@@ -123,7 +137,8 @@ PORT=3000
 | Type | Icon | Description | Data Collected |
 |------|------|-------------|----------------|
 | 🍼 Milk | 🍼 | Milk feeding session | Amount in ml |
-| 💩 Poo-poo | 💩 | Diaper change | - |
+| 💩 Diaper | 💧 / 💩 | Diaper change with pee/poo/both subtype | Subtype only |
+| 😴 Sleep | 😴 | Sleep session using fall-asleep/wake-up buttons | Duration in minutes |
 | 🛁 Bath | 🛁 | Bath time | - |
 
 ## 🚀 Deployment

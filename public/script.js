@@ -2,6 +2,7 @@ class BabyTracker {
     constructor() {
         this.events = [];
         this.allEvents = [];
+        this.manualTimeOverride = false;
         this.init();
     }
 
@@ -13,20 +14,20 @@ class BabyTracker {
         await this.renderTimeline();
     }
 
-    setCurrentTime() {
-        const now = new Date();
+    setCurrentTime(date = new Date()) {
         // Format for datetime-local input: YYYY-MM-DDTHH:MM
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
         const formattedTime = `${year}-${month}-${day}T${hours}:${minutes}`;
 
         const timeInput = document.getElementById('eventTime');
         if (timeInput) {
             timeInput.value = formattedTime;
         }
+        this.manualTimeOverride = false;
     }
 
     bindEvents() {
@@ -42,6 +43,13 @@ class BabyTracker {
         const applyCustomRange = document.getElementById('applyCustomRange');
         const exportCSV = document.getElementById('exportCSV');
         const exportPDF = document.getElementById('exportPDF');
+
+        const timeInput = document.getElementById('eventTime');
+        if (timeInput) {
+            timeInput.addEventListener('input', () => {
+                this.manualTimeOverride = true;
+            });
+        }
 
         // Show/hide amount fields based on event type
         eventType.addEventListener('change', (e) => {
@@ -120,7 +128,8 @@ class BabyTracker {
         const milkAmount = document.getElementById('milkAmount').value;
         const diaperSubtype = document.getElementById('diaperSubtype').value;
         const userName = document.getElementById('userName').value;
-        const eventTime = document.getElementById('eventTime').value;
+        const eventTimeInput = document.getElementById('eventTime');
+        const eventTime = eventTimeInput ? eventTimeInput.value : '';
 
         if (!userName) {
             alert('Please select who is recording');
@@ -207,9 +216,21 @@ class BabyTracker {
             return;
         }
 
-        if (!eventTime) {
-            alert('Please select event time');
-            return;
+        let eventTimestamp;
+        if (this.manualTimeOverride) {
+            if (!eventTime) {
+                alert('Please select event time');
+                return;
+            }
+            const parsedManualTime = new Date(eventTime);
+            if (isNaN(parsedManualTime.getTime())) {
+                alert('Please enter a valid time');
+                return;
+            }
+            eventTimestamp = parsedManualTime;
+        } else {
+            eventTimestamp = new Date();
+            this.setCurrentTime(eventTimestamp);
         }
 
         try {
@@ -222,7 +243,7 @@ class BabyTracker {
                     type: 'sleep',
                     sleepSubType: sleepSubType,
                     userName: userName,
-                    timestamp: new Date(eventTime).toISOString()
+                    timestamp: eventTimestamp.toISOString()
                 })
             });
 

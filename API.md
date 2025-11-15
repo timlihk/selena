@@ -67,7 +67,8 @@ Content-Type: application/json
 ```json
 {
   "type": "milk",
-  "amount": 150
+  "amount": 150,
+  "userName": "Tim"
 }
 ```
 
@@ -75,8 +76,11 @@ Content-Type: application/json
 
 | Parameter | Type | Required | Description | Constraints |
 |-----------|------|----------|-------------|-------------|
-| `type` | string | ✅ | Event type | `milk`, `poo`, or `bath` |
-| `amount` | integer | ❌ | Milk amount in ml | Required when type is `milk`, must be positive |
+| `type` | string | ✅ | Event type | `milk`, `diaper`, `poo` (legacy), `bath`, `sleep` |
+| `userName` | string | ✅ | Who is recording the event | Must be one of the allowed caregivers configured on the server |
+| `amount` | integer | ❌ | Quantity payload | Required for `milk` (ml) and manual `sleep` entries (minutes) |
+| `diaperSubtype` | string | ❌ | Diaper detail | Required when `type` is `diaper`; one of `pee`, `poo`, `both` |
+| `sleepSubType` | string | ❌ | Sleep action | `fall_asleep` or `wake_up` for automatic sleep tracking |
 
 **Response**:
 ```json
@@ -94,9 +98,12 @@ Content-Type: application/json
 - `500` - Internal server error
 
 **Validation Rules**:
-- `type` must be one of: `milk`, `poo`, `bath`
-- If `type` is `milk`, `amount` is required and must be > 0
-- If `type` is `poo` or `bath`, `amount` is ignored
+- `type` must be one of the values listed above
+- `userName` is mandatory and must match the allow-list configured on the server
+- `milk` events require a positive `amount` (ml)
+- `sleep` events using manual entry require a positive `amount` (minutes); automatic sleep tracking prefers `sleepSubType`
+- `diaper` events require a valid `diaperSubtype`
+- Legacy `poo` events are converted to `diaper` + `poo` subtype internally
 
 ---
 
@@ -139,7 +146,9 @@ Retrieve aggregated statistics for today's events.
   "milk": 3,
   "poo": 2,
   "bath": 1,
-  "totalMilk": 420
+  "sleep": 4,
+  "totalMilk": 420,
+  "totalSleepHours": 6.5
 }
 ```
 
@@ -148,9 +157,11 @@ Retrieve aggregated statistics for today's events.
 | Field | Type | Description |
 |-------|------|-------------|
 | `milk` | integer | Number of milk events today |
-| `poo` | integer | Number of diaper change events today |
+| `poo` | integer | Number of diaper change events today (legacy `poo` + new `diaper` types) |
 | `bath` | integer | Number of bath events today |
+| `sleep` | integer | Number of sleep sessions recorded today |
 | `totalMilk` | integer | Total milk consumed today (in ml) |
+| `totalSleepHours` | number | Total hours of sleep recorded today |
 
 **Status Codes**:
 - `200` - Success
@@ -202,7 +213,7 @@ All API endpoints follow consistent error handling patterns.
 **Invalid Event Type**:
 ```json
 {
-  "error": "Invalid event type. Must be one of: milk, poo, bath"
+  "error": "Invalid event type. Must be one of: milk, diaper, poo, bath, sleep"
 }
 ```
 

@@ -19,26 +19,16 @@ function cloneEvent(event) {
 }
 
 function ensureMemoryTimestamp(value) {
-  return value ? new Date(value).toISOString() : null;
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function resetMemoryStore() {
   memoryStore = [];
   memoryIdCounter = 1;
-}
-
-function parseFilterDate(dateString, endOfDay = false) {
-  if (!dateString) {
-    return null;
-  }
-  const parsed = new Date(dateString);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  if (endOfDay) {
-    parsed.setHours(23, 59, 59, 999);
-  }
-  return parsed;
 }
 
 function sortEventsDescending(events) {
@@ -49,13 +39,30 @@ function formatDateInTimezone(date, timeZone) {
   return date.toLocaleDateString('en-US', { timeZone });
 }
 
-function createMemoryEvent(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null) {
+function formatISODateInTimezone(date, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function createMemoryEvent(
+  type,
+  amount = null,
+  userName = 'Unknown',
+  sleepStartTime = null,
+  sleepEndTime = null,
+  subtype = null,
+  timestampOverride = null
+) {
   const event = {
     id: memoryIdCounter++,
     type,
     amount,
     user_name: userName,
-    timestamp: new Date().toISOString(),
+    timestamp: ensureMemoryTimestamp(timestampOverride) || new Date().toISOString(),
     sleep_start_time: ensureMemoryTimestamp(sleepStartTime),
     sleep_end_time: ensureMemoryTimestamp(sleepEndTime),
     subtype
@@ -346,15 +353,15 @@ const Event = {
   async getFiltered(filter) {
     try {
       if (useMemoryStore) {
-        const startDate = parseFilterDate(filter.startDate);
-        const endDate = parseFilterDate(filter.endDate, true);
+        const startDateString = filter.startDate;
+        const endDateString = filter.endDate;
 
         const filtered = memoryStore.filter(event => {
-          const timestamp = new Date(event.timestamp);
-          if (startDate && timestamp < startDate) {
+          const eventDateIso = formatISODateInTimezone(new Date(event.timestamp), HOME_TIMEZONE);
+          if (startDateString && eventDateIso < startDateString) {
             return false;
           }
-          if (endDate && timestamp > endDate) {
+          if (endDateString && eventDateIso > endDateString) {
             return false;
           }
           return true;
@@ -364,17 +371,30 @@ const Event = {
 
       ensureDatabaseConnected();
       let query = 'SELECT * FROM baby_events';
-      let params = [];
-      let conditions = [];
+      const params = [];
+      const conditions = [];
+      let timezoneParamIndex = null;
+
+      const ensureTimezoneParam = () => {
+        if (timezoneParamIndex === null) {
+          params.push(HOME_TIMEZONE);
+          timezoneParamIndex = params.length;
+        }
+        return timezoneParamIndex;
+      };
 
       if (filter.startDate) {
-        conditions.push('timestamp >= $' + (params.length + 1));
+        const tzIndex = ensureTimezoneParam();
         params.push(filter.startDate);
+        const startParamIndex = params.length;
+        conditions.push(`DATE(timestamp AT TIME ZONE $${tzIndex}) >= $${startParamIndex}::date`);
       }
 
       if (filter.endDate) {
-        conditions.push('timestamp <= $' + (params.length + 1));
-        params.push(filter.endDate + ' 23:59:59'); // Include entire end date
+        const tzIndex = ensureTimezoneParam();
+        params.push(filter.endDate);
+        const endParamIndex = params.length;
+        conditions.push(`DATE(timestamp AT TIME ZONE $${tzIndex}) <= $${endParamIndex}::date`);
       }
 
       if (conditions.length > 0) {
@@ -396,12 +416,7 @@ const Event = {
   async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null, timestamp = null) {
     try {
       if (useMemoryStore) {
-        const event = createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype);
-        // Override timestamp if provided
-        if (timestamp) {
-          event.timestamp = timestamp;
-        }
-        return event;
+        return createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp);
       }
 
       ensureDatabaseConnected();
