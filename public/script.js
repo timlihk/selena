@@ -6,10 +6,27 @@ class BabyTracker {
     }
 
     async init() {
+        this.setCurrentTime();
         this.bindEvents();
         await this.loadEvents();
         await this.updateStats();
         await this.renderTimeline();
+    }
+
+    setCurrentTime() {
+        const now = new Date();
+        // Format for datetime-local input: YYYY-MM-DDTHH:MM
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const formattedTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+
+        const timeInput = document.getElementById('eventTime');
+        if (timeInput) {
+            timeInput.value = formattedTime;
+        }
     }
 
     bindEvents() {
@@ -103,6 +120,7 @@ class BabyTracker {
         const milkAmount = document.getElementById('milkAmount').value;
         const diaperSubtype = document.getElementById('diaperSubtype').value;
         const userName = document.getElementById('userName').value;
+        const eventTime = document.getElementById('eventTime').value;
 
         if (!userName) {
             alert('Please select who is recording');
@@ -111,6 +129,11 @@ class BabyTracker {
 
         if (!eventType) {
             alert('Please select an event type');
+            return;
+        }
+
+        if (!eventTime) {
+            alert('Please select event time');
             return;
         }
 
@@ -134,7 +157,8 @@ class BabyTracker {
             const requestData = {
                 type: eventType,
                 amount: eventType === 'milk' ? parseInt(milkAmount, 10) : null,
-                userName: userName
+                userName: userName,
+                timestamp: new Date(eventTime).toISOString()
             };
 
             // Add diaper subtype if applicable
@@ -176,9 +200,15 @@ class BabyTracker {
     // Add sleep event with fall asleep/wake up tracking
     async addSleepEvent(sleepSubType) {
         const userName = document.getElementById('userName').value;
+        const eventTime = document.getElementById('eventTime').value;
 
         if (!userName) {
             alert('Please select who is recording');
+            return;
+        }
+
+        if (!eventTime) {
+            alert('Please select event time');
             return;
         }
 
@@ -191,7 +221,8 @@ class BabyTracker {
                 body: JSON.stringify({
                     type: 'sleep',
                     sleepSubType: sleepSubType,
-                    userName: userName
+                    userName: userName,
+                    timestamp: new Date(eventTime).toISOString()
                 })
             });
 
@@ -229,6 +260,7 @@ class BabyTracker {
         document.getElementById('sleepTrackingGroup').style.display = 'none';
         document.getElementById('diaperSubtype').value = '';
         document.querySelectorAll('.btn-diaper').forEach(btn => btn.classList.remove('selected'));
+        this.setCurrentTime(); // Reset time to current time
     }
 
     async loadEvents() {

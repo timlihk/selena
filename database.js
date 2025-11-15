@@ -393,22 +393,27 @@ const Event = {
 
 
   // Create a new event
-  async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null) {
+  async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null, timestamp = null) {
     try {
       if (useMemoryStore) {
-        return createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype);
+        const event = createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype);
+        // Override timestamp if provided
+        if (timestamp) {
+          event.timestamp = timestamp;
+        }
+        return event;
       }
 
       ensureDatabaseConnected();
       const result = await pool.query(
-        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [type, amount, userName, sleepStartTime, sleepEndTime, subtype]
+        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype, timestamp) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, CURRENT_TIMESTAMP)) RETURNING *',
+        [type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp]
       );
       return result.rows[0];
     } catch (error) {
       console.error('❌ Database error creating event:', error);
       console.error('❌ Database error details:', {
-        type, amount, userName, sleepStartTime, sleepEndTime, subtype,
+        type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp,
         DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
         NODE_ENV: process.env.NODE_ENV,
         RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT

@@ -100,7 +100,7 @@ app.get('/api/events', getEventsHandler);
 app.post('/api/events', async (req, res) => {
   try {
     console.log('Received event creation request:', req.body);
-    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, diaperSubtype } = req.body;
+    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, diaperSubtype, timestamp } = req.body;
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
@@ -116,6 +116,20 @@ app.post('/api/events', async (req, res) => {
 
     if (!ALLOWED_USERS.includes(userName)) {
       return res.status(400).json({ error: 'Invalid user' });
+    }
+
+    // Validate timestamp if provided
+    let eventTimestamp = null;
+    if (timestamp) {
+      const parsedTimestamp = new Date(timestamp);
+      if (isNaN(parsedTimestamp.getTime())) {
+        return res.status(400).json({ error: 'Invalid timestamp format' });
+      }
+      // Prevent future timestamps
+      if (parsedTimestamp > new Date()) {
+        return res.status(400).json({ error: 'Timestamp cannot be in the future' });
+      }
+      eventTimestamp = parsedTimestamp.toISOString();
     }
 
     if (type === 'milk' && (!amount || isNaN(amount) || amount <= 0)) {
@@ -139,9 +153,9 @@ app.post('/api/events', async (req, res) => {
 
     if (type === 'sleep') {
       if (sleepSubType === 'fall_asleep') {
-        sleepStart = new Date().toISOString();
+        sleepStart = eventTimestamp || new Date().toISOString();
       } else if (sleepSubType === 'wake_up') {
-        sleepEnd = new Date().toISOString();
+        sleepEnd = eventTimestamp || new Date().toISOString();
 
         // Find the most recent fall asleep event for this user (optimized query)
         const lastFallAsleep = await Event.getLastIncompleteSleep(userName);
@@ -175,14 +189,14 @@ app.post('/api/events', async (req, res) => {
       // If so, automatically complete it with the current time as wake up time
       const incompleteSleep = await Event.getLastIncompleteSleep(userName);
       if (incompleteSleep) {
-        const sleepEnd = new Date().toISOString();
+        const sleepEnd = eventTimestamp || new Date().toISOString();
         const sleepStart = incompleteSleep.sleep_start_time;
         const duration = Math.round((new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)); // minutes
         const sleepAmount = duration > 0 ? duration : 1;
 
         // Update the incomplete sleep event with end time and duration
         await Event.update(incompleteSleep.id, 'sleep', sleepAmount, sleepStart, sleepEnd);
-        console.log(`Auto-completed sleep event ${incompleteSleep.id} with ${type} event`);
+        console.log(`Auto-completed sleep event ${incompleteSleep.id} with ${type} event at ${sleepEnd}`);
       }
     }
 
@@ -196,8 +210,8 @@ app.post('/api/events', async (req, res) => {
       eventSubtype = 'poo';
     }
 
-    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd, subtype: eventSubtype });
-    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, eventSubtype);
+    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd, subtype: eventSubtype, timestamp: eventTimestamp });
+    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, eventSubtype, eventTimestamp);
     console.log('Event created successfully:', event);
     res.status(201).json(event);
   } catch (error) {
