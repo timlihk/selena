@@ -48,6 +48,17 @@ header p {
     font-size: 1.5rem;
 }
 
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.section-header h2 {
+    margin-bottom: 0;
+}
+
 .event-form {
     display: flex;
     flex-direction: column;
@@ -224,11 +235,23 @@ header p {
     border: 1px solid #e2e8f0;
 }
 
+.filter-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
 .filter-group {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 15px;
+}
+
+.filter-row .filter-group {
+    flex: 1;
+    min-width: 250px;
+    margin-bottom: 0;
 }
 
 .filter-group label {
@@ -279,7 +302,6 @@ header p {
 .export-controls {
     display: flex;
     gap: 10px;
-    margin-bottom: 15px;
 }
 
 .btn-export {
@@ -291,6 +313,7 @@ header p {
     cursor: pointer;
     font-size: 14px;
     transition: background-color 0.2s;
+    white-space: nowrap;
 }
 
 .btn-export:hover {
@@ -468,6 +491,20 @@ header p {
     .custom-range {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .filter-row {
+        flex-direction: column;
+    }
+
+    .filter-row .filter-group {
+        min-width: auto;
     }
 }
 

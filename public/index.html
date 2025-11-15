@@ -74,38 +74,40 @@
         </div>
 
         <div class="events-section">
-            <h2>Recent Events</h2>
-
-            <!-- Export Controls -->
-            <div class="export-controls">
-                <button id="exportCSV" class="btn-export">Export to CSV</button>
-                <button id="exportPDF" class="btn-export">Export to PDF</button>
+            <div class="section-header">
+                <h2>Recent Events</h2>
+                <div class="export-controls">
+                    <button id="exportCSV" class="btn-export">Export to CSV</button>
+                    <button id="exportPDF" class="btn-export">Export to PDF</button>
+                </div>
             </div>
 
             <!-- Date Filter Controls -->
             <div class="filter-controls">
-                <div class="filter-group">
-                    <label for="dateFilter">Filter by Date:</label>
-                    <select id="dateFilter" class="filter-select">
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="all">All Time</option>
-                        <option value="custom">Custom Range</option>
-                    </select>
-                </div>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="dateFilter">Filter by Date:</label>
+                        <select id="dateFilter" class="filter-select">
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7">Last 7 Days</option>
+                            <option value="last30">Last 30 Days</option>
+                            <option value="all">All Time</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="typeFilter">Filter by Type:</label>
-                    <select id="typeFilter" class="filter-select">
-                        <option value="all">All Types</option>
-                        <option value="milk">🍼 Milk</option>
-                        <option value="diaper">💩 Diaper Change</option>
-                        <option value="poo">💩 Poo (Legacy)</option>
-                        <option value="bath">🛁 Bath</option>
-                        <option value="sleep">😴 Sleep</option>
-                    </select>
+                    <div class="filter-group">
+                        <label for="typeFilter">Filter by Type:</label>
+                        <select id="typeFilter" class="filter-select">
+                            <option value="all">All Types</option>
+                            <option value="milk">🍼 Milk</option>
+                            <option value="diaper">💩 Diaper Change</option>
+                            <option value="poo">💩 Poo (Legacy)</option>
+                            <option value="bath">🛁 Bath</option>
+                            <option value="sleep">😴 Sleep</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="customDateRange" class="custom-range" style="display: none;">
@@ -163,6 +165,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=9"></script>
+    <script src="script.js?v=10"></script>
 </body>
 </html>
