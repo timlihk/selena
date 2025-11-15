@@ -58,7 +58,7 @@ async function testTypeFilterReturnsOnlyRequestedType() {
   assert(res.jsonData.every(event => event.type === 'milk'), 'All events should be milk type');
 }
 
-async function testSleepUpdatePreservesTimestamps() {
+async function testSleepUpdateMaintainsStartAndAdjustsEnd() {
   resetMemoryStore();
   const initialStart = new Date('2024-01-01T00:00:00Z').toISOString();
   const initialEnd = new Date('2024-01-01T01:00:00Z').toISOString();
@@ -75,8 +75,9 @@ async function testSleepUpdatePreservesTimestamps() {
 
   assert.strictEqual(res.statusCode, 200, 'Sleep update should succeed');
   assert.strictEqual(res.jsonData.amount, 45, 'Sleep amount should update');
-  assert.strictEqual(res.jsonData.sleep_start_time, initialStart, 'Sleep start should remain unchanged');
-  assert.strictEqual(res.jsonData.sleep_end_time, initialEnd, 'Sleep end should remain unchanged');
+  assert.strictEqual(res.jsonData.sleep_start_time, initialStart, 'Sleep start should remain unchanged when timestamp omitted');
+  const expectedEnd = new Date(new Date(initialStart).getTime() + 45 * 60000).toISOString();
+  assert.strictEqual(res.jsonData.sleep_end_time, expectedEnd, 'Sleep end should match duration');
 }
 
 async function testMemoryStorePreservesProvidedTimestamp() {
@@ -138,15 +139,38 @@ async function testUpdateAllowsTimestampChange() {
   assert.strictEqual(res.jsonData.timestamp, updatedTimestamp, 'Timestamp should update');
 }
 
+async function testSleepUpdateAdjustsStartAndEndTimes() {
+  resetMemoryStore();
+  const initialStart = '2024-04-01T02:00:00.000Z';
+  const initialEnd = '2024-04-01T03:30:00.000Z';
+
+  const createdEvent = await Event.create('sleep', 90, 'Tim', initialStart, initialEnd, null, initialStart);
+
+  const newStart = '2024-04-01T01:00:00.000Z';
+  const req = {
+    params: { id: createdEvent.id.toString() },
+    body: { type: 'sleep', amount: 120, timestamp: newStart }
+  };
+  const res = createMockResponse();
+
+  await updateEventHandler(req, res);
+
+  assert.strictEqual(res.statusCode, 200, 'Sleep update with timestamp should succeed');
+  assert.strictEqual(res.jsonData.sleep_start_time, newStart, 'Sleep start time should update');
+  const expectedEnd = new Date(new Date(newStart).getTime() + 120 * 60000).toISOString();
+  assert.strictEqual(res.jsonData.sleep_end_time, expectedEnd, 'Sleep end time should align with duration');
+}
+
 async function run() {
   await initializeDatabase();
 
   await testInvalidFilterReturns400();
   await testTypeFilterReturnsOnlyRequestedType();
-  await testSleepUpdatePreservesTimestamps();
+  await testSleepUpdateMaintainsStartAndAdjustsEnd();
   await testMemoryStorePreservesProvidedTimestamp();
   await testDateFilterRespectsTimezoneBoundaries();
   await testUpdateAllowsTimestampChange();
+  await testSleepUpdateAdjustsStartAndEndTimes();
 
   console.log('All tests passed');
 }

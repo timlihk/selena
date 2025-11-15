@@ -3,10 +3,14 @@ class BabyTracker {
         this.events = [];
         this.allEvents = [];
         this.manualTimeOverride = false;
+        this.localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        this.defaultHomeTimezone = 'Asia/Hong_Kong';
+        this.homeTimezone = this.defaultHomeTimezone;
         this.init();
     }
 
     async init() {
+        await this.loadConfig();
         this.setCurrentTime();
         this.bindEvents();
         await this.loadEvents();
@@ -14,17 +18,27 @@ class BabyTracker {
         await this.renderTimeline();
     }
 
+    async loadConfig() {
+        try {
+            const response = await fetch('/api/config');
+            if (!response.ok) {
+                throw new Error('Failed to load configuration');
+            }
+            const data = await response.json();
+            if (data.homeTimezone) {
+                this.homeTimezone = data.homeTimezone;
+            }
+        } catch (error) {
+            console.warn('Failed to load configuration, using fallback timezone', error);
+            this.homeTimezone = this.homeTimezone || this.localTimezone || this.defaultHomeTimezone;
+        }
+    }
+
     setCurrentTime(date = new Date()) {
-        // Format for datetime-local input: YYYY-MM-DDTHH:MM
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const formattedTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+        const formattedTime = this.formatDateTimeInTimezone(date, this.homeTimezone);
 
         const timeInput = document.getElementById('eventTime');
-        if (timeInput) {
+        if (timeInput && formattedTime) {
             timeInput.value = formattedTime;
         }
         this.manualTimeOverride = false;
@@ -141,11 +155,6 @@ class BabyTracker {
             return;
         }
 
-        if (!eventTime) {
-            alert('Please select event time');
-            return;
-        }
-
         if (eventType === 'milk' && (!milkAmount || isNaN(parseInt(milkAmount)) || parseInt(milkAmount) <= 0)) {
             alert('Please enter a valid milk amount (positive number)');
             return;
@@ -163,11 +172,17 @@ class BabyTracker {
         }
 
         try {
+            const timestampIso = this.convertInputToHomeISO(eventTime);
+            if (!timestampIso) {
+                alert('Please enter a valid time');
+                return;
+            }
+
             const requestData = {
                 type: eventType,
                 amount: eventType === 'milk' ? parseInt(milkAmount, 10) : null,
                 userName: userName,
-                timestamp: new Date(eventTime).toISOString()
+                timestamp: timestampIso
             };
 
             // Add diaper subtype if applicable
@@ -222,15 +237,16 @@ class BabyTracker {
                 alert('Please select event time');
                 return;
             }
-            const parsedManualTime = new Date(eventTime);
-            if (isNaN(parsedManualTime.getTime())) {
+            const manualIso = this.convertInputToHomeISO(eventTime);
+            if (!manualIso) {
                 alert('Please enter a valid time');
                 return;
             }
-            eventTimestamp = parsedManualTime;
+            eventTimestamp = manualIso;
         } else {
-            eventTimestamp = new Date();
-            this.setCurrentTime(eventTimestamp);
+            const now = new Date();
+            eventTimestamp = now.toISOString();
+            this.setCurrentTime(now);
         }
 
         try {
@@ -243,7 +259,7 @@ class BabyTracker {
                     type: 'sleep',
                     sleepSubType: sleepSubType,
                     userName: userName,
-                    timestamp: eventTimestamp.toISOString()
+                    timestamp: eventTimestamp
                 })
             });
 
@@ -261,6 +277,7 @@ class BabyTracker {
 
             await this.loadEvents();
             await this.updateStats();
+            this.setCurrentTime();
 
             // Show success message
             if (sleepSubType === 'fall_asleep') {
@@ -654,8 +671,8 @@ class BabyTracker {
             return;
         }
 
-        const parsedTime = new Date(timeInput.value);
-        if (isNaN(parsedTime.getTime())) {
+        const isoTimestamp = this.convertInputToHomeISO(timeInput.value);
+        if (!isoTimestamp) {
             alert('Please enter a valid date and time');
             return;
         }
@@ -664,7 +681,7 @@ class BabyTracker {
             const requestBody = {
                 type: newType,
                 amount: newAmount,
-                timestamp: parsedTime.toISOString()
+                timestamp: isoTimestamp
             };
 
             if (newType === 'diaper') {
@@ -902,6 +919,64 @@ class BabyTracker {
         printWindow.print();
     }
 
+    formatDateTimeInTimezone(date, timeZone) {
+        try {
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: timeZone || this.homeTimezone || this.localTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            const parts = formatter.formatToParts(date);
+            const getPart = (type) => parts.find(part => part.type === type)?.value || '00';
+            return `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}`;
+        } catch (error) {
+            console.error('Failed to format datetime for timezone', error);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+    }
+
+    convertInputToHomeISO(value) {
+        if (!value) {
+            return null;
+        }
+        const parsed = new Date(value);
+        if (isNaN(parsed.getTime())) {
+            return null;
+        }
+        const targetTimezone = this.homeTimezone || this.localTimezone;
+        if (!targetTimezone || targetTimezone === this.localTimezone) {
+            return parsed.toISOString();
+        }
+        try {
+            const options = {
+                timeZone: targetTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            };
+            const timezoneString = parsed.toLocaleString('en-US', options);
+            const timezoneAsLocal = new Date(timezoneString);
+            const diff = parsed.getTime() - timezoneAsLocal.getTime();
+            return new Date(parsed.getTime() + diff).toISOString();
+        } catch (error) {
+            console.error('Failed to convert input time using timezone', error);
+            return parsed.toISOString();
+        }
+    }
+
     formatDateTimeLocal(timestamp) {
         if (!timestamp) {
             return '';
@@ -910,12 +985,7 @@ class BabyTracker {
         if (isNaN(date.getTime())) {
             return '';
         }
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
+        return this.formatDateTimeInTimezone(date, this.homeTimezone);
     }
 
     formatLocalDate(date) {

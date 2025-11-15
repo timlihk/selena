@@ -11,6 +11,7 @@ const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
 const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
 const MAX_FILTER_LENGTH = 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -330,20 +331,42 @@ async function updateEventHandler(req, res) {
       eventSubtype = 'poo';
     }
 
-    const preserveSleepTimestamps = type === 'sleep';
+    const isSleepEvent = type === 'sleep';
     const existingSleepStart = existingEvent.sleep_start_time ?? existingEvent.sleepStartTime ?? null;
     const existingSleepEnd = existingEvent.sleep_end_time ?? existingEvent.sleepEndTime ?? null;
-
     const existingTimestamp = existingEvent.timestamp ? new Date(existingEvent.timestamp).toISOString() : null;
+
+    let updatedSleepStart = null;
+    let updatedSleepEnd = null;
+
+    let timestampForUpdate = normalizedTimestamp || existingTimestamp;
+
+    if (isSleepEvent) {
+      const baseSleepStart = normalizedTimestamp || existingSleepStart || existingTimestamp;
+      updatedSleepStart = baseSleepStart;
+
+      const durationMinutes = normalizedAmount ?? (Number.isFinite(existingEvent.amount) ? Number(existingEvent.amount) : null);
+      if (baseSleepStart && Number.isFinite(durationMinutes)) {
+        const calculatedEnd = new Date(baseSleepStart);
+        calculatedEnd.setMinutes(calculatedEnd.getMinutes() + durationMinutes);
+        updatedSleepEnd = calculatedEnd.toISOString();
+      } else if (existingSleepEnd) {
+        updatedSleepEnd = existingSleepEnd;
+      } else {
+        updatedSleepEnd = null;
+      }
+
+      timestampForUpdate = normalizedTimestamp || baseSleepStart || existingTimestamp;
+    }
 
     const event = await Event.update(
       eventId,
       type,
       normalizedAmount,
-      preserveSleepTimestamps ? existingSleepStart : null,
-      preserveSleepTimestamps ? existingSleepEnd : null,
+      updatedSleepStart,
+      updatedSleepEnd,
       eventSubtype,
-      normalizedTimestamp || existingTimestamp
+      timestampForUpdate
     );
     res.json(event);
   } catch (error) {
@@ -357,6 +380,13 @@ async function updateEventHandler(req, res) {
 }
 
 app.put('/api/events/:id', updateEventHandler);
+
+// Configuration endpoint
+app.get('/api/config', (req, res) => {
+  res.json({
+    homeTimezone: HOME_TIMEZONE
+  });
+});
 
 // Serve the main page
 app.get('/', (req, res) => {
