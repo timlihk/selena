@@ -40,7 +40,7 @@
                     <select id="eventType" name="eventType" required>
                         <option value="">Select an event</option>
                         <option value="milk">🍼 Milk</option>
-                        <option value="poo">💩 Poo-poo</option>
+                        <option value="diaper">💩 Diaper Change</option>
                         <option value="bath">🛁 Bath</option>
                         <option value="sleep">😴 Sleep</option>
                     </select>
@@ -49,6 +49,16 @@
                 <div class="form-group" id="milkAmountGroup" style="display: none;">
                     <label for="milkAmount">Milk Amount (ml):</label>
                     <input type="number" id="milkAmount" name="milkAmount" min="0" max="500" placeholder="Enter ml">
+                </div>
+
+                <div class="form-group" id="diaperSubtypeGroup" style="display: none;">
+                    <label>Diaper Type:</label>
+                    <div class="diaper-buttons">
+                        <button type="button" class="btn-diaper" data-subtype="pee">💧 Pee</button>
+                        <button type="button" class="btn-diaper" data-subtype="poo">💩 Poo</button>
+                        <button type="button" class="btn-diaper" data-subtype="both">💧💩 Both</button>
+                    </div>
+                    <input type="hidden" id="diaperSubtype" name="diaperSubtype">
                 </div>
 
                 <div class="form-group" id="sleepTrackingGroup" style="display: none;">
@@ -91,7 +101,8 @@
                     <select id="typeFilter" class="filter-select">
                         <option value="all">All Types</option>
                         <option value="milk">🍼 Milk</option>
-                        <option value="poo">💩 Poo-poo</option>
+                        <option value="diaper">💩 Diaper Change</option>
+                        <option value="poo">💩 Poo (Legacy)</option>
                         <option value="bath">🛁 Bath</option>
                         <option value="sleep">😴 Sleep</option>
                     </select>

@@ -86,7 +86,8 @@ async function initializeDatabase() {
           user_name VARCHAR(50) NOT NULL,
           timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           sleep_start_time TIMESTAMPTZ,
-          sleep_end_time TIMESTAMPTZ
+          sleep_end_time TIMESTAMPTZ,
+          subtype VARCHAR(20)
         )
       `);
 
@@ -128,6 +129,21 @@ async function initializeDatabase() {
         await client.query(`
           ALTER TABLE baby_events
           ADD COLUMN sleep_end_time TIMESTAMPTZ
+        `);
+      }
+
+      // Check if subtype column exists, if not add it
+      const subtypeColumnCheck = await client.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'baby_events' AND column_name = 'subtype'
+      `);
+
+      if (subtypeColumnCheck.rows.length === 0) {
+        console.log('⚠️  Adding missing subtype column to baby_events table');
+        await client.query(`
+          ALTER TABLE baby_events
+          ADD COLUMN subtype VARCHAR(20)
         `);
       }
 
@@ -257,18 +273,18 @@ const Event = {
 
 
   // Create a new event
-  async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null) {
+  async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null) {
     try {
       ensureDatabaseConnected();
       const result = await pool.query(
-        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [type, amount, userName, sleepStartTime, sleepEndTime]
+        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [type, amount, userName, sleepStartTime, sleepEndTime, subtype]
       );
       return result.rows[0];
     } catch (error) {
       console.error('❌ Database error creating event:', error);
       console.error('❌ Database error details:', {
-        type, amount, userName, sleepStartTime, sleepEndTime,
+        type, amount, userName, sleepStartTime, sleepEndTime, subtype,
         DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
         NODE_ENV: process.env.NODE_ENV,
         RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT
@@ -348,12 +364,12 @@ const Event = {
   },
 
   // Update an event
-  async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null) {
+  async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null, subtype = null) {
     try {
       ensureDatabaseConnected();
       const result = await pool.query(
-        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4 WHERE id = $5 RETURNING *',
-        [type, amount, sleepStartTime, sleepEndTime, id]
+        'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4, subtype = $5 WHERE id = $6 RETURNING *',
+        [type, amount, sleepStartTime, sleepEndTime, subtype, id]
       );
 
       if (result.rows.length === 0) {

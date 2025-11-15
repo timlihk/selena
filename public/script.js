@@ -15,6 +15,7 @@ class BabyTracker {
         const eventForm = document.getElementById('eventForm');
         const eventType = document.getElementById('eventType');
         const milkAmountGroup = document.getElementById('milkAmountGroup');
+        const diaperSubtypeGroup = document.getElementById('diaperSubtypeGroup');
         const sleepTrackingGroup = document.getElementById('sleepTrackingGroup');
         const fallAsleepBtn = document.getElementById('fallAsleepBtn');
         const wakeUpBtn = document.getElementById('wakeUpBtn');
@@ -28,7 +29,14 @@ class BabyTracker {
         eventType.addEventListener('change', (e) => {
             const selectedType = e.target.value;
             milkAmountGroup.style.display = selectedType === 'milk' ? 'block' : 'none';
+            diaperSubtypeGroup.style.display = selectedType === 'diaper' ? 'block' : 'none';
             sleepTrackingGroup.style.display = selectedType === 'sleep' ? 'block' : 'none';
+
+            // Reset diaper subtype selection when switching away
+            if (selectedType !== 'diaper') {
+                document.getElementById('diaperSubtype').value = '';
+                document.querySelectorAll('.btn-diaper').forEach(btn => btn.classList.remove('selected'));
+            }
         });
 
         // Sleep button handlers
@@ -38,6 +46,18 @@ class BabyTracker {
 
         wakeUpBtn.addEventListener('click', () => {
             this.addSleepEvent('wake_up');
+        });
+
+        // Diaper button handlers
+        document.querySelectorAll('.btn-diaper').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const subtype = e.currentTarget.getAttribute('data-subtype');
+                document.getElementById('diaperSubtype').value = subtype;
+
+                // Update button visual state
+                document.querySelectorAll('.btn-diaper').forEach(btn => btn.classList.remove('selected'));
+                e.currentTarget.classList.add('selected');
+            });
         });
 
         // Handle form submission
@@ -80,6 +100,7 @@ class BabyTracker {
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
+        const diaperSubtype = document.getElementById('diaperSubtype').value;
         const userName = document.getElementById('userName').value;
 
         if (!userName) {
@@ -97,6 +118,11 @@ class BabyTracker {
             return;
         }
 
+        if (eventType === 'diaper' && !diaperSubtype) {
+            alert('Please select diaper type (Pee, Poo, or Both)');
+            return;
+        }
+
         // Skip sleep events in the main form - they're handled by the sleep buttons
         if (eventType === 'sleep') {
             alert('Please use the "Fall Asleep" or "Wake Up" buttons for sleep tracking');
@@ -109,6 +135,12 @@ class BabyTracker {
                 amount: eventType === 'milk' ? parseInt(milkAmount, 10) : null,
                 userName: userName
             };
+
+            // Add diaper subtype if applicable
+            if (eventType === 'diaper') {
+                requestData.diaperSubtype = diaperSubtype;
+            }
+
             console.log('Sending event creation request:', requestData);
 
             const response = await fetch('/api/events', {
@@ -192,7 +224,10 @@ class BabyTracker {
     resetForm() {
         document.getElementById('eventForm').reset();
         document.getElementById('milkAmountGroup').style.display = 'none';
+        document.getElementById('diaperSubtypeGroup').style.display = 'none';
         document.getElementById('sleepTrackingGroup').style.display = 'none';
+        document.getElementById('diaperSubtype').value = '';
+        document.querySelectorAll('.btn-diaper').forEach(btn => btn.classList.remove('selected'));
     }
 
     async loadEvents() {
@@ -234,13 +269,15 @@ class BabyTracker {
         const icons = {
             milk: '🍼',
             poo: '💩',
+            diaper: this.getDiaperIcon(event.subtype),
             bath: '🛁',
             sleep: '😴'
         };
 
         const labels = {
             milk: 'Milk Feed',
-            poo: 'Diaper Change',
+            poo: 'Diaper Change (Legacy)',
+            diaper: this.getDiaperLabel(event.subtype),
             bath: 'Bath Time',
             sleep: 'Sleep Session'
         };
@@ -412,7 +449,8 @@ class BabyTracker {
 
         const optionData = [
             { value: 'milk', label: '🍼 Milk Feed' },
-            { value: 'poo', label: '💩 Diaper Change' },
+            { value: 'diaper', label: '💩 Diaper Change' },
+            { value: 'poo', label: '💩 Diaper (Legacy)' },
             { value: 'bath', label: '🛁 Bath Time' },
             { value: 'sleep', label: '😴 Sleep Session' }
         ];
@@ -462,6 +500,37 @@ class BabyTracker {
         amountGroup.appendChild(amountInput);
         eventActions.appendChild(amountGroup);
 
+        // Create diaper subtype selector
+        const diaperSubtypeGroup = document.createElement('div');
+        diaperSubtypeGroup.className = 'edit-diaper-subtype-group';
+        if (event.type !== 'diaper') {
+            diaperSubtypeGroup.style.display = 'none';
+        }
+
+        const diaperSubtypeSelect = document.createElement('select');
+        diaperSubtypeSelect.className = 'edit-diaper-subtype';
+        diaperSubtypeSelect.style.padding = '4px 8px';
+        diaperSubtypeSelect.style.marginRight = '10px';
+
+        const subtypeOptions = [
+            { value: 'pee', label: '💧 Pee' },
+            { value: 'poo', label: '💩 Poo' },
+            { value: 'both', label: '💧💩 Both' }
+        ];
+
+        subtypeOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.value === event.subtype) {
+                option.selected = true;
+            }
+            diaperSubtypeSelect.appendChild(option);
+        });
+
+        diaperSubtypeGroup.appendChild(diaperSubtypeSelect);
+        eventActions.appendChild(diaperSubtypeGroup);
+
         // Create save button
         const saveButton = document.createElement('button');
         saveButton.className = 'btn-save';
@@ -480,14 +549,19 @@ class BabyTracker {
 
         eventItem.appendChild(eventActions);
 
-        // Add event listener for type change to show/hide amount field
+        // Add event listener for type change to show/hide amount field and diaper subtype
         typeSelect.addEventListener('change', (e) => {
             if (e.target.value === 'milk' || e.target.value === 'sleep') {
                 amountGroup.style.display = 'block';
                 amountInput.max = e.target.value === 'milk' ? '500' : '480';
                 amountInput.placeholder = e.target.value === 'milk' ? 'ml' : 'min';
+                diaperSubtypeGroup.style.display = 'none';
+            } else if (e.target.value === 'diaper') {
+                amountGroup.style.display = 'none';
+                diaperSubtypeGroup.style.display = 'block';
             } else {
                 amountGroup.style.display = 'none';
+                diaperSubtypeGroup.style.display = 'none';
             }
         });
     }
@@ -499,9 +573,11 @@ class BabyTracker {
 
         const typeSelect = eventItem.querySelector('.edit-type');
         const amountInput = eventItem.querySelector('.edit-amount');
+        const diaperSubtypeSelect = eventItem.querySelector('.edit-diaper-subtype');
 
         const newType = typeSelect.value;
         let newAmount = null;
+        let diaperSubtype = null;
 
         if (newType === 'milk' || newType === 'sleep') {
             if (!amountInput.value || isNaN(amountInput.value) || parseInt(amountInput.value) <= 0) {
@@ -511,16 +587,30 @@ class BabyTracker {
             newAmount = parseInt(amountInput.value);
         }
 
+        if (newType === 'diaper') {
+            if (!diaperSubtypeSelect || !diaperSubtypeSelect.value) {
+                alert('Please select a diaper subtype');
+                return;
+            }
+            diaperSubtype = diaperSubtypeSelect.value;
+        }
+
         try {
+            const requestBody = {
+                type: newType,
+                amount: newAmount
+            };
+
+            if (newType === 'diaper') {
+                requestBody.diaperSubtype = diaperSubtype;
+            }
+
             const response = await fetch(`/api/events/${eventId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    type: newType,
-                    amount: newAmount
-                })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
@@ -753,6 +843,24 @@ class BabyTracker {
         return `${year}-${month}-${day}`;
     }
 
+    getDiaperIcon(subtype) {
+        const icons = {
+            pee: '💧',
+            poo: '💩',
+            both: '💧💩'
+        };
+        return icons[subtype] || '💩';
+    }
+
+    getDiaperLabel(subtype) {
+        const labels = {
+            pee: 'Diaper Change (Pee)',
+            poo: 'Diaper Change (Poo)',
+            both: 'Diaper Change (Both)'
+        };
+        return labels[subtype] || 'Diaper Change';
+    }
+
     async renderTimeline() {
         try {
             // Get today's events
@@ -789,6 +897,7 @@ class BabyTracker {
             // Event configuration
             const eventTypes = [
                 { type: 'milk', icon: '🍼', label: 'Milk' },
+                { type: 'diaper', icon: '💩', label: 'Diaper' },
                 { type: 'poo', icon: '💩', label: 'Poo' },
                 { type: 'bath', icon: '🛁', label: 'Bath' },
                 { type: 'sleep', icon: '😴', label: 'Sleep' }

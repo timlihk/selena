@@ -376,6 +376,57 @@ header p {
     transform: translateY(0);
 }
 
+/* Diaper Tracking Styles */
+.diaper-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.btn-diaper {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    background: white;
+    color: #4a5568;
+}
+
+.btn-diaper:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    border-color: #cbd5e0;
+}
+
+.btn-diaper.selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
+}
+
+.btn-diaper:active {
+    transform: translateY(0);
+}
+
+/* Edit Diaper Subtype Styles */
+.edit-diaper-subtype-group {
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.edit-diaper-subtype {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .container {

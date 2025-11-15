@@ -6,7 +6,8 @@ const rateLimit = require('express-rate-limit');
 const { initializeDatabase, Event } = require('./database');
 
 // Input validation constants
-const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'bath', 'sleep'];
+const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
+const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
 const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
 const MAX_FILTER_LENGTH = 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -99,7 +100,7 @@ app.get('/api/events', getEventsHandler);
 app.post('/api/events', async (req, res) => {
   try {
     console.log('Received event creation request:', req.body);
-    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime } = req.body;
+    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, diaperSubtype } = req.body;
 
     if (!type) {
       return res.status(400).json({ error: 'Event type is required' });
@@ -119,6 +120,16 @@ app.post('/api/events', async (req, res) => {
 
     if (type === 'milk' && (!amount || isNaN(amount) || amount <= 0)) {
       return res.status(400).json({ error: 'Milk amount is required and must be a positive number' });
+    }
+
+    // Validate diaper subtype
+    if (type === 'diaper') {
+      if (!diaperSubtype) {
+        return res.status(400).json({ error: 'Diaper subtype is required (pee, poo, or both)' });
+      }
+      if (!ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
+        return res.status(400).json({ error: 'Invalid diaper subtype. Must be pee, poo, or both' });
+      }
     }
 
     // Handle sleep events with fall asleep/wake up tracking
@@ -175,8 +186,18 @@ app.post('/api/events', async (req, res) => {
       }
     }
 
-    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd });
-    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd);
+    // Determine the subtype to store
+    let eventSubtype = null;
+    if (type === 'diaper') {
+      eventSubtype = diaperSubtype;
+    }
+    // For backward compatibility, also support old "poo" type by converting to diaper with poo subtype
+    if (type === 'poo') {
+      eventSubtype = 'poo';
+    }
+
+    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd, subtype: eventSubtype });
+    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, eventSubtype);
     console.log('Event created successfully:', event);
     res.status(201).json(event);
   } catch (error) {
@@ -218,7 +239,7 @@ app.delete('/api/events/:id', async (req, res) => {
 async function updateEventHandler(req, res) {
   try {
     const { id } = req.params;
-    const { type, amount } = req.body;
+    const { type, amount, diaperSubtype } = req.body;
 
     const eventId = parseInt(id, 10);
 
@@ -255,6 +276,21 @@ async function updateEventHandler(req, res) {
       normalizedAmount = parsedAmount;
     }
 
+    // Validate diaper subtype if type is diaper
+    let eventSubtype = null;
+    if (type === 'diaper') {
+      if (!diaperSubtype) {
+        return res.status(400).json({ error: 'Diaper subtype is required (pee, poo, or both)' });
+      }
+      if (!ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
+        return res.status(400).json({ error: 'Invalid diaper subtype. Must be pee, poo, or both' });
+      }
+      eventSubtype = diaperSubtype;
+    } else if (type === 'poo') {
+      // Backward compatibility
+      eventSubtype = 'poo';
+    }
+
     const preserveSleepTimestamps = type === 'sleep';
     const existingSleepStart = existingEvent.sleep_start_time ?? existingEvent.sleepStartTime ?? null;
     const existingSleepEnd = existingEvent.sleep_end_time ?? existingEvent.sleepEndTime ?? null;
@@ -264,7 +300,8 @@ async function updateEventHandler(req, res) {
       type,
       normalizedAmount,
       preserveSleepTimestamps ? existingSleepStart : null,
-      preserveSleepTimestamps ? existingSleepEnd : null
+      preserveSleepTimestamps ? existingSleepEnd : null,
+      eventSubtype
     );
     res.json(event);
   } catch (error) {
