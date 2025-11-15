@@ -1,6 +1,7 @@
 class BabyTracker {
     constructor() {
         this.events = [];
+        this.allEvents = [];
         this.init();
     }
 
@@ -236,12 +237,15 @@ class BabyTracker {
             if (!response.ok) {
                 throw new Error('Failed to load events');
             }
-            this.events = await response.json();
+            const data = await response.json();
+            this.allEvents = Array.isArray(data) ? [...data] : [];
+            this.events = [...this.allEvents];
             this.renderEvents();
             await this.renderTimeline();
         } catch (error) {
             console.error('Error loading events:', error);
             this.events = [];
+            this.allEvents = [];
             this.renderEvents();
             await this.renderTimeline();
         }
@@ -863,13 +867,14 @@ class BabyTracker {
 
     async renderTimeline() {
         try {
+            const sourceEvents = this.allEvents && this.allEvents.length ? this.allEvents : this.events;
             // Get today's events
             const today = new Date();
             const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
             const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
             // Filter events from today
-            const todayEvents = this.events.filter(event => {
+            const todayEvents = sourceEvents.filter(event => {
                 const eventDate = new Date(event.timestamp);
                 return eventDate >= startOfDay && eventDate <= endOfDay;
             });

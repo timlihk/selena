@@ -227,11 +227,20 @@ app.get('/api/stats/today', async (req, res) => {
 app.delete('/api/events/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await Event.delete(parseInt(id));
+    const eventId = parseInt(id, 10);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    await Event.delete(eventId);
     res.json({ message: 'Event deleted successfully' });
   } catch (error) {
     console.error('Error deleting event:', error);
-    res.status(500).json({ error: 'Failed to delete event' });
+    if (error.message === 'Event not found') {
+      res.status(404).json({ error: 'Event not found' });
+    } else {
+      res.status(500).json({ error: 'Failed to delete event' });
+    }
   }
 });
 

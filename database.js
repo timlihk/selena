@@ -5,15 +5,88 @@ require('dotenv').config();
 const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
 const HISTORICAL_DATA_TIMEZONE = process.env.DB_STORAGE_TIMEZONE || 'UTC';
 
+const useMemoryStore = !process.env.DATABASE_URL;
+
 // Database connection configuration
-let pool;
+let pool = null;
+
+// In-memory fallback for local development/tests when DATABASE_URL is missing
+let memoryStore = [];
+let memoryIdCounter = 1;
+
+function cloneEvent(event) {
+  return event ? { ...event } : null;
+}
+
+function ensureMemoryTimestamp(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function resetMemoryStore() {
+  memoryStore = [];
+  memoryIdCounter = 1;
+}
+
+function parseFilterDate(dateString, endOfDay = false) {
+  if (!dateString) {
+    return null;
+  }
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  if (endOfDay) {
+    parsed.setHours(23, 59, 59, 999);
+  }
+  return parsed;
+}
+
+function sortEventsDescending(events) {
+  return [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function formatDateInTimezone(date, timeZone) {
+  return date.toLocaleDateString('en-US', { timeZone });
+}
+
+function createMemoryEvent(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null) {
+  const event = {
+    id: memoryIdCounter++,
+    type,
+    amount,
+    user_name: userName,
+    timestamp: new Date().toISOString(),
+    sleep_start_time: ensureMemoryTimestamp(sleepStartTime),
+    sleep_end_time: ensureMemoryTimestamp(sleepEndTime),
+    subtype
+  };
+  memoryStore.push(event);
+  return cloneEvent(event);
+}
+
+function updateMemoryEvent(index, updates) {
+  if (index < 0 || index >= memoryStore.length) {
+    throw new Error('Event not found');
+  }
+  const existing = memoryStore[index];
+  const updated = {
+    ...existing,
+    ...updates
+  };
+  memoryStore[index] = updated;
+  return cloneEvent(updated);
+}
+
+function findMemoryEventIndexById(id) {
+  return memoryStore.findIndex(event => event.id === id);
+}
 
 // For Railway and other cloud platforms, always use SSL
 const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
 
 // Initialize pool only when DATABASE_URL is available
 try {
-  if (process.env.DATABASE_URL) {
+  if (!useMemoryStore) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: sslConfig,
@@ -23,6 +96,8 @@ try {
       max: 20
     });
     console.log('Database pool initialized successfully');
+  } else {
+    console.warn('⚠️  DATABASE_URL is not set. Falling back to in-memory data store (not for production use).');
   }
 } catch (error) {
   console.error('Database pool initialization failed:', error.message);
@@ -31,6 +106,9 @@ try {
 
 // Helper function to check if database is connected
 function ensureDatabaseConnected() {
+  if (useMemoryStore) {
+    return;
+  }
   if (!pool) {
     throw new Error('Database not connected. DATABASE_URL environment variable is required');
   }
@@ -39,12 +117,13 @@ function ensureDatabaseConnected() {
 // Test database connection
 async function testConnection() {
   try {
+    if (useMemoryStore) {
+      console.log('🔌 DATABASE_URL not set - running with in-memory data store');
+      return false;
+    }
+
     console.log('🔌 Testing database connection...');
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-
-    if (!process.env.DATABASE_URL) {
-      throw new Error('DATABASE_URL environment variable is not set');
-    }
 
     const client = await pool.connect();
     try {
@@ -64,15 +143,15 @@ async function testConnection() {
 // Initialize database tables
 async function initializeDatabase() {
   try {
+    if (useMemoryStore) {
+      console.log('✅ In-memory data store ready (DATABASE_URL not configured)');
+      return;
+    }
+
     // Test connection first
     const connected = await testConnection();
     if (!connected) {
       throw new Error('Cannot initialize database - connection failed');
-    }
-
-    if (pool === null) {
-      console.log('✅ No DATABASE_URL - in-memory storage ready');
-      return;
     }
 
     const client = await pool.connect();
@@ -155,6 +234,22 @@ async function initializeDatabase() {
         ALTER COLUMN timestamp SET DEFAULT CURRENT_TIMESTAMP
       `);
 
+      // Add helpful indexes for filtering and stats queries
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_baby_events_timestamp
+        ON baby_events (timestamp DESC)
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_baby_events_type
+        ON baby_events (type, timestamp DESC)
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_baby_events_date
+        ON baby_events ((DATE(timestamp)))
+      `);
+
       console.log('✅ Database initialized successfully');
     } finally {
       client.release();
@@ -198,6 +293,11 @@ const Event = {
   // Get event by ID
   async getById(id) {
     try {
+      if (useMemoryStore) {
+        const event = memoryStore.find(item => item.id === id);
+        return cloneEvent(event || null);
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE id = $1 LIMIT 1',
@@ -213,6 +313,10 @@ const Event = {
   // Get events by type
   async getByType(type) {
     try {
+      if (useMemoryStore) {
+        return sortEventsDescending(memoryStore.filter(event => event.type === type)).map(cloneEvent);
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events WHERE type = $1 ORDER BY timestamp DESC',
@@ -228,6 +332,10 @@ const Event = {
   // Get all events
   async getAll() {
     try {
+      if (useMemoryStore) {
+        return sortEventsDescending(memoryStore).map(cloneEvent);
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         'SELECT * FROM baby_events ORDER BY timestamp DESC'
@@ -242,6 +350,23 @@ const Event = {
   // Get filtered events
   async getFiltered(filter) {
     try {
+      if (useMemoryStore) {
+        const startDate = parseFilterDate(filter.startDate);
+        const endDate = parseFilterDate(filter.endDate, true);
+
+        const filtered = memoryStore.filter(event => {
+          const timestamp = new Date(event.timestamp);
+          if (startDate && timestamp < startDate) {
+            return false;
+          }
+          if (endDate && timestamp > endDate) {
+            return false;
+          }
+          return true;
+        });
+        return sortEventsDescending(filtered).map(cloneEvent);
+      }
+
       ensureDatabaseConnected();
       let query = 'SELECT * FROM baby_events';
       let params = [];
@@ -275,6 +400,10 @@ const Event = {
   // Create a new event
   async create(type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null) {
     try {
+      if (useMemoryStore) {
+        return createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype);
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
@@ -296,12 +425,54 @@ const Event = {
   // Get today's events
   async getTodayStats() {
     try {
+      if (useMemoryStore) {
+        const todayString = formatDateInTimezone(new Date(), HOME_TIMEZONE);
+        const statsAccumulator = memoryStore.reduce((acc, event) => {
+          const eventDateString = formatDateInTimezone(new Date(event.timestamp), HOME_TIMEZONE);
+          if (eventDateString !== todayString) {
+            return acc;
+          }
+
+          if (event.type === 'milk') {
+            acc.milk += 1;
+            acc.totalMilk += event.amount || 0;
+          } else if (event.type === 'sleep') {
+            acc.sleep += 1;
+            acc.totalSleepMinutes += event.amount || 0;
+          } else if (event.type === 'bath') {
+            acc.bath += 1;
+          }
+
+          if (event.type === 'diaper' || event.type === 'poo') {
+            acc.diaper += 1;
+          }
+
+          return acc;
+        }, {
+          milk: 0,
+          diaper: 0,
+          bath: 0,
+          sleep: 0,
+          totalMilk: 0,
+          totalSleepMinutes: 0
+        });
+
+        return {
+          milk: statsAccumulator.milk,
+          poo: statsAccumulator.diaper,
+          bath: statsAccumulator.bath,
+          sleep: statsAccumulator.sleep,
+          totalMilk: statsAccumulator.totalMilk,
+          totalSleepHours: Math.round((statsAccumulator.totalSleepMinutes / 60) * 10) / 10
+        };
+      }
+
       ensureDatabaseConnected();
       // Simplified query: Get all events where the date (in home timezone) matches today
       const result = await pool.query(`
         SELECT
           COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
-          COUNT(CASE WHEN type = 'poo' THEN 1 END) as poo_count,
+          COUNT(CASE WHEN type IN ('poo', 'diaper') THEN 1 END) as diaper_count,
           COUNT(CASE WHEN type = 'bath' THEN 1 END) as bath_count,
           COUNT(CASE WHEN type = 'sleep' THEN 1 END) as sleep_count,
           COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
@@ -315,7 +486,7 @@ const Event = {
       // Format the stats
       const stats = {
         milk: parseInt(row.milk_count, 10) || 0,
-        poo: parseInt(row.poo_count, 10) || 0,
+        poo: parseInt(row.diaper_count, 10) || 0,
         bath: parseInt(row.bath_count, 10) || 0,
         sleep: parseInt(row.sleep_count, 10) || 0,
         totalMilk: parseInt(row.total_milk, 10) || 0,
@@ -332,6 +503,18 @@ const Event = {
   // Get the last incomplete sleep event for a user (N+1 query fix)
   async getLastIncompleteSleep(userName) {
     try {
+      if (useMemoryStore) {
+        const event = sortEventsDescending(
+          memoryStore.filter(item =>
+            item.type === 'sleep' &&
+            item.user_name === userName &&
+            item.sleep_start_time &&
+            !item.sleep_end_time
+          )
+        )[0];
+        return cloneEvent(event || null);
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         `SELECT * FROM baby_events
@@ -354,8 +537,20 @@ const Event = {
   // Delete an event
   async delete(id) {
     try {
+      if (useMemoryStore) {
+        const index = findMemoryEventIndexById(id);
+        if (index === -1) {
+          throw new Error('Event not found');
+        }
+        memoryStore.splice(index, 1);
+        return true;
+      }
+
       ensureDatabaseConnected();
-      await pool.query('DELETE FROM baby_events WHERE id = $1', [id]);
+      const result = await pool.query('DELETE FROM baby_events WHERE id = $1 RETURNING id', [id]);
+      if (result.rowCount === 0) {
+        throw new Error('Event not found');
+      }
       return true;
     } catch (error) {
       console.error('Error deleting event:', error);
@@ -366,6 +561,20 @@ const Event = {
   // Update an event
   async update(id, type, amount = null, sleepStartTime = null, sleepEndTime = null, subtype = null) {
     try {
+      if (useMemoryStore) {
+        const index = findMemoryEventIndexById(id);
+        if (index === -1) {
+          throw new Error('Event not found');
+        }
+        return updateMemoryEvent(index, {
+          type,
+          amount,
+          sleep_start_time: ensureMemoryTimestamp(sleepStartTime),
+          sleep_end_time: ensureMemoryTimestamp(sleepEndTime),
+          subtype
+        });
+      }
+
       ensureDatabaseConnected();
       const result = await pool.query(
         'UPDATE baby_events SET type = $1, amount = $2, sleep_start_time = $3, sleep_end_time = $4, subtype = $5 WHERE id = $6 RETURNING *',
@@ -388,5 +597,6 @@ module.exports = {
   pool,
   initializeDatabase,
   Event,
-  testConnection
+  testConnection,
+  resetMemoryStore
 };
