@@ -1,5 +1,62 @@
 class BabyTracker {
     constructor() {
+        // Event configuration constants
+        this.EVENT_CONFIG = {
+            milk: {
+                icon: '🍼',
+                label: 'Milk Feed',
+                color: '#667eea',
+                requiresAmount: true,
+                amountUnit: 'ml',
+                amountMax: 500,
+                amountPlaceholder: 'Amount (ml)'
+            },
+            diaper: {
+                icon: '💩',
+                label: 'Diaper Change',
+                color: '#8b6914',
+                requiresSubtype: true,
+                subtypes: {
+                    pee: { icon: '💧', label: 'Diaper Change (Pee)', color: '#4facfe' },
+                    poo: { icon: '💩', label: 'Diaper Change (Poo)', color: '#8b6914' },
+                    both: { icon: '💧💩', label: 'Diaper Change (Both)', color: '#a855f7' }
+                }
+            },
+            bath: {
+                icon: '🛁',
+                label: 'Bath Time',
+                color: '#4facfe'
+            },
+            sleep: {
+                icon: '😴',
+                label: 'Sleep Session',
+                color: '#43e97b',
+                requiresAmount: true,
+                amountUnit: 'min',
+                amountMax: 480,
+                amountPlaceholder: 'Duration (min)'
+            },
+            poo: {
+                icon: '💩',
+                label: 'Diaper Change (Legacy)',
+                color: '#8b6914'
+            }
+        };
+
+        // UI constants
+        this.UI_CONSTANTS = {
+            EVENTS_LIST_MAX_HEIGHT: 400,
+            TIMELINE_HOURS: 24,
+            ANIMATION_DURATION: 300
+        };
+
+        // Validation constants
+        this.VALIDATION = {
+            MAX_USERNAME_LENGTH: 50,
+            MAX_NOTE_LENGTH: 500,
+            TIMESTAMP_MAX_PAST_DAYS: 365
+        };
+
         this.events = [];
         this.allEvents = [];
         this.manualTimeOverride = false;
@@ -58,6 +115,32 @@ class BabyTracker {
         const exportCSV = document.getElementById('exportCSV');
         const exportPDF = document.getElementById('exportPDF');
 
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                document.body.classList.add(savedTheme);
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.body.classList.add('dark-mode');
+            }
+            this.updateThemeIcon(themeToggle);
+
+            themeToggle.addEventListener('click', () => {
+                const isDark = document.body.classList.contains('dark-mode');
+                document.body.classList.remove('dark-mode', 'light-mode');
+
+                if (isDark) {
+                    document.body.classList.add('light-mode');
+                    localStorage.setItem('theme', 'light-mode');
+                } else {
+                    document.body.classList.add('dark-mode');
+                    localStorage.setItem('theme', 'dark-mode');
+                }
+
+                this.updateThemeIcon(themeToggle);
+            });
+        }
+
         const timeInput = document.getElementById('eventTime');
         if (timeInput) {
             timeInput.addEventListener('input', () => {
@@ -68,7 +151,15 @@ class BabyTracker {
         // Show/hide amount fields based on event type
         eventType.addEventListener('change', (e) => {
             const selectedType = e.target.value;
+            const selectedConfig = this.EVENT_CONFIG[selectedType] || {};
             milkAmountGroup.style.display = selectedType === 'milk' ? 'block' : 'none';
+            if (selectedType === 'milk') {
+                const milkInput = document.getElementById('milkAmount');
+                if (milkInput) {
+                    milkInput.placeholder = selectedConfig.amountPlaceholder || 'Amount (ml)';
+                    milkInput.max = selectedConfig.amountMax || 500;
+                }
+            }
             diaperSubtypeGroup.style.display = selectedType === 'diaper' ? 'block' : 'none';
             sleepTrackingGroup.style.display = selectedType === 'sleep' ? 'block' : 'none';
 
@@ -144,6 +235,7 @@ class BabyTracker {
         const userName = document.getElementById('userName').value;
         const eventTimeInput = document.getElementById('eventTime');
         const eventTime = eventTimeInput ? eventTimeInput.value : '';
+        const submitButton = document.querySelector('#eventForm button[type="submit"]');
 
         if (!userName) {
             alert('Please select who is recording');
@@ -171,10 +263,15 @@ class BabyTracker {
             return;
         }
 
+        this.setButtonLoading(submitButton, true, 'Adding...');
+        let loadingActive = true;
+
         try {
             const timestampIso = this.convertInputToHomeISO(eventTime);
             if (!timestampIso) {
                 alert('Please enter a valid time');
+                this.setButtonLoading(submitButton, false);
+                loadingActive = false;
                 return;
             }
 
@@ -214,10 +311,21 @@ class BabyTracker {
 
             await this.loadEvents();
             await this.updateStats();
+            await this.renderTimeline();
             this.resetForm();
+
+            if (submitButton) {
+                this.setButtonLoading(submitButton, false);
+                loadingActive = false;
+                this.showButtonSuccess(submitButton, '✓ Added!');
+            }
         } catch (error) {
             console.error('Error adding event:', error);
             alert('Failed to add event: ' + error.message);
+        } finally {
+            if (loadingActive) {
+                this.setButtonLoading(submitButton, false);
+            }
         }
     }
 
@@ -225,6 +333,8 @@ class BabyTracker {
     async addSleepEvent(sleepSubType) {
         const userName = document.getElementById('userName').value;
         const eventTime = document.getElementById('eventTime').value;
+        const buttonId = sleepSubType === 'fall_asleep' ? 'fallAsleepBtn' : 'wakeUpBtn';
+        const button = document.getElementById(buttonId);
 
         if (!userName) {
             alert('Please select who is recording');
@@ -248,6 +358,10 @@ class BabyTracker {
             eventTimestamp = now.toISOString();
             this.setCurrentTime(now);
         }
+
+        const loadingText = sleepSubType === 'fall_asleep' ? 'Recording...' : 'Waking...';
+        this.setButtonLoading(button, true, loadingText);
+        let loadingActive = true;
 
         try {
             const response = await fetch('/api/events', {
@@ -279,15 +393,19 @@ class BabyTracker {
             await this.updateStats();
             this.setCurrentTime();
 
-            // Show success message
-            if (sleepSubType === 'fall_asleep') {
-                alert('😴 Fall asleep recorded! Don\'t forget to record wake up when baby wakes.');
-            } else if (sleepSubType === 'wake_up') {
-                alert('☀️ Wake up recorded! Sleep duration calculated automatically.');
+            const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
+            if (button) {
+                this.setButtonLoading(button, false);
+                loadingActive = false;
+                this.showButtonSuccess(button, successMessage);
             }
         } catch (error) {
             console.error('Error adding sleep event:', error);
             alert('Failed to add sleep event: ' + error.message);
+        } finally {
+            if (loadingActive) {
+                this.setButtonLoading(button, false);
+            }
         }
     }
 
@@ -302,6 +420,10 @@ class BabyTracker {
     }
 
     async loadEvents() {
+        const eventsSection = document.querySelector('.events-section');
+        if (eventsSection) {
+            this.setLoadingOverlay(eventsSection, true);
+        }
         try {
             const response = await fetch('/api/events');
             if (!response.ok) {
@@ -318,11 +440,19 @@ class BabyTracker {
             this.allEvents = [];
             this.renderEvents();
             await this.renderTimeline();
+        } finally {
+            if (eventsSection) {
+                this.setLoadingOverlay(eventsSection, false);
+            }
         }
     }
 
     renderEvents() {
         const eventsList = document.getElementById('eventsList');
+        if (eventsList && !eventsList.dataset.maxHeightApplied) {
+            eventsList.style.maxHeight = `${this.UI_CONSTANTS.EVENTS_LIST_MAX_HEIGHT}px`;
+            eventsList.dataset.maxHeightApplied = 'true';
+        }
         eventsList.innerHTML = ''; // Safe to clear
 
         if (this.events.length === 0) {
@@ -340,23 +470,14 @@ class BabyTracker {
     }
 
     createEventElement(event) {
-        const icons = {
-            milk: '🍼',
-            poo: '💩',
-            diaper: this.getDiaperIcon(event.subtype),
-            bath: '🛁',
-            sleep: '😴'
-        };
+        const config = this.EVENT_CONFIG[event.type] || { icon: '📝', label: event.type };
+        const icon = event.type === 'diaper' && event.subtype
+            ? config.subtypes?.[event.subtype]?.icon || config.icon
+            : config.icon;
+        const label = event.type === 'diaper' && event.subtype
+            ? config.subtypes?.[event.subtype]?.label || config.label
+            : config.label;
 
-        const labels = {
-            milk: 'Milk Feed',
-            poo: 'Diaper Change (Legacy)',
-            diaper: this.getDiaperLabel(event.subtype),
-            bath: 'Bath Time',
-            sleep: 'Sleep Session'
-        };
-
-        // Create DOM elements safely
         const eventItem = document.createElement('div');
         eventItem.className = 'event-item';
         eventItem.setAttribute('data-event-id', event.id);
@@ -366,14 +487,14 @@ class BabyTracker {
 
         const eventIcon = document.createElement('span');
         eventIcon.className = 'event-icon';
-        eventIcon.textContent = icons[event.type];
+        eventIcon.textContent = icon;
 
         const eventDetails = document.createElement('div');
         eventDetails.className = 'event-details';
 
         const eventType = document.createElement('span');
         eventType.className = 'event-type';
-        eventType.textContent = labels[event.type];
+        eventType.textContent = label;
 
         const eventTimeSpan = document.createElement('span');
         eventTimeSpan.className = 'event-time';
@@ -390,7 +511,8 @@ class BabyTracker {
         if (event.amount) {
             const eventAmount = document.createElement('span');
             eventAmount.className = 'event-amount';
-            eventAmount.textContent = event.type === 'milk' ? `${event.amount}ml` : `${event.amount}min`;
+            const unit = config.amountUnit || (event.type === 'milk' ? 'ml' : event.type === 'sleep' ? 'min' : '');
+            eventAmount.textContent = `${event.amount}${unit}`;
             eventActions.appendChild(eventAmount);
         }
 
@@ -452,22 +574,44 @@ class BabyTracker {
 
     // Remove a single event
     async removeEvent(eventId) {
-        if (confirm('Are you sure you want to remove this event?')) {
-            try {
-                const response = await fetch(`/api/events/${eventId}`, {
-                    method: 'DELETE'
-                });
+        if (!confirm('Are you sure you want to remove this event?')) {
+            return;
+        }
 
-                if (!response.ok) {
-                    throw new Error('Failed to remove event');
-                }
+        const eventItem = document.querySelector(`[data-event-id="${eventId}"]`);
+        const deleteButton = eventItem?.querySelector('.btn-remove');
+        this.setButtonLoading(deleteButton, true);
+        let loadingActive = true;
 
-                await this.loadEvents();
-                await this.updateStats();
-                await this.renderTimeline();
-            } catch (error) {
-                console.error('Error removing event:', error);
-                alert('Failed to remove event');
+        try {
+            const response = await fetch(`/api/events/${eventId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to remove event');
+            }
+
+            if (eventItem) {
+                const durationMs = this.UI_CONSTANTS.ANIMATION_DURATION || 300;
+                eventItem.style.transition = `opacity ${durationMs}ms ease, transform ${durationMs}ms ease`;
+                eventItem.style.opacity = '0';
+                eventItem.style.transform = 'translateX(-20px)';
+                await new Promise(resolve => setTimeout(resolve, durationMs));
+            }
+
+            await this.loadEvents();
+            await this.updateStats();
+            await this.renderTimeline();
+
+            this.setButtonLoading(deleteButton, false);
+            loadingActive = false;
+        } catch (error) {
+            console.error('Error removing event:', error);
+            alert('Failed to remove event: ' + error.message);
+        } finally {
+            if (loadingActive) {
+                this.setButtonLoading(deleteButton, false);
             }
         }
     }
@@ -480,62 +624,35 @@ class BabyTracker {
         const eventItem = document.querySelector(`[data-event-id="${eventId}"]`);
         if (!eventItem) return;
 
-        const icons = {
-            milk: '🍼',
-            poo: '💩',
-            bath: '🛁',
-            sleep: '😴'
-        };
+        const config = this.EVENT_CONFIG[event.type] || {};
 
-        const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
+        eventItem.innerHTML = '';
+        eventItem.classList.add('editing');
 
-        // Clear existing content
-        eventItem.textContent = '';
-
-        // Create event-info container
         const eventInfo = document.createElement('div');
         eventInfo.className = 'event-info';
 
-        // Create and append icon
         const eventIcon = document.createElement('span');
         eventIcon.className = 'event-icon';
-        eventIcon.textContent = icons[event.type];
+        eventIcon.textContent = config.icon || '📝';
         eventInfo.appendChild(eventIcon);
 
-        // Create event-details container
         const eventDetails = document.createElement('div');
         eventDetails.className = 'event-details';
 
-        // Create type select dropdown
         const typeSelect = document.createElement('select');
         typeSelect.className = 'edit-type';
-        typeSelect.value = event.type;
-
-        const optionData = [
-            { value: 'milk', label: '🍼 Milk Feed' },
-            { value: 'diaper', label: '💩 Diaper Change' },
-            { value: 'poo', label: '💩 Diaper (Legacy)' },
-            { value: 'bath', label: '🛁 Bath Time' },
-            { value: 'sleep', label: '😴 Sleep Session' }
-        ];
-
-        optionData.forEach(opt => {
+        Object.entries(this.EVENT_CONFIG).forEach(([type, typeConfig]) => {
             const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.label;
-            if (opt.value === event.type) {
+            option.value = type;
+            option.textContent = `${typeConfig.icon} ${typeConfig.label}`;
+            if (type === event.type) {
                 option.selected = true;
             }
             typeSelect.appendChild(option);
         });
-
         eventDetails.appendChild(typeSelect);
 
-        // Create time display
         const timeInput = document.createElement('input');
         timeInput.type = 'datetime-local';
         timeInput.className = 'edit-time';
@@ -546,62 +663,42 @@ class BabyTracker {
         eventInfo.appendChild(eventDetails);
         eventItem.appendChild(eventInfo);
 
-        // Create event-actions container
         const eventActions = document.createElement('div');
         eventActions.className = 'event-actions';
 
-        // Create amount input group
         const amountGroup = document.createElement('div');
         amountGroup.className = 'edit-amount-group';
-        if (event.type !== 'milk' && event.type !== 'sleep') {
-            amountGroup.style.display = 'none';
-        }
-
         const amountInput = document.createElement('input');
         amountInput.type = 'number';
         amountInput.className = 'edit-amount';
         amountInput.value = event.amount || '';
         amountInput.min = '0';
-        amountInput.max = event.type === 'milk' ? '500' : '480';
-        amountInput.placeholder = event.type === 'milk' ? 'ml' : 'min';
         amountInput.style.width = '80px';
         amountInput.style.padding = '4px 8px';
-
         amountGroup.appendChild(amountInput);
         eventActions.appendChild(amountGroup);
 
-        // Create diaper subtype selector
         const diaperSubtypeGroup = document.createElement('div');
         diaperSubtypeGroup.className = 'edit-diaper-subtype-group';
-        if (event.type !== 'diaper') {
-            diaperSubtypeGroup.style.display = 'none';
-        }
-
+        diaperSubtypeGroup.style.display = 'none';
         const diaperSubtypeSelect = document.createElement('select');
         diaperSubtypeSelect.className = 'edit-diaper-subtype';
         diaperSubtypeSelect.style.padding = '4px 8px';
         diaperSubtypeSelect.style.marginRight = '10px';
-
-        const subtypeOptions = [
-            { value: 'pee', label: '💧 Pee' },
-            { value: 'poo', label: '💩 Poo' },
-            { value: 'both', label: '💧💩 Both' }
-        ];
-
-        subtypeOptions.forEach(opt => {
-            const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.label;
-            if (opt.value === event.subtype) {
-                option.selected = true;
-            }
-            diaperSubtypeSelect.appendChild(option);
-        });
-
+        if (this.EVENT_CONFIG.diaper?.subtypes) {
+            Object.entries(this.EVENT_CONFIG.diaper.subtypes).forEach(([value, subtypeConfig]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = subtypeConfig.label;
+                if (value === event.subtype) {
+                    option.selected = true;
+                }
+                diaperSubtypeSelect.appendChild(option);
+            });
+        }
         diaperSubtypeGroup.appendChild(diaperSubtypeSelect);
         eventActions.appendChild(diaperSubtypeGroup);
 
-        // Create save button
         const saveButton = document.createElement('button');
         saveButton.className = 'btn-save';
         saveButton.textContent = '💾';
@@ -609,7 +706,6 @@ class BabyTracker {
         saveButton.addEventListener('click', () => this.saveInlineEdit(eventId));
         eventActions.appendChild(saveButton);
 
-        // Create cancel button
         const cancelButton = document.createElement('button');
         cancelButton.className = 'btn-cancel';
         cancelButton.textContent = '❌';
@@ -619,20 +715,27 @@ class BabyTracker {
 
         eventItem.appendChild(eventActions);
 
-        // Add event listener for type change to show/hide amount field and diaper subtype
-        typeSelect.addEventListener('change', (e) => {
-            if (e.target.value === 'milk' || e.target.value === 'sleep') {
+        const updateFieldVisibility = (selectedType) => {
+            const selectedConfig = this.EVENT_CONFIG[selectedType] || {};
+            if (selectedConfig.requiresAmount) {
                 amountGroup.style.display = 'block';
-                amountInput.max = e.target.value === 'milk' ? '500' : '480';
-                amountInput.placeholder = e.target.value === 'milk' ? 'ml' : 'min';
-                diaperSubtypeGroup.style.display = 'none';
-            } else if (e.target.value === 'diaper') {
-                amountGroup.style.display = 'none';
-                diaperSubtypeGroup.style.display = 'block';
+                amountInput.max = selectedConfig.amountMax || '500';
+                amountInput.placeholder = selectedConfig.amountPlaceholder || 'Amount';
             } else {
                 amountGroup.style.display = 'none';
+            }
+
+            if (selectedType === 'diaper') {
+                diaperSubtypeGroup.style.display = 'block';
+            } else {
                 diaperSubtypeGroup.style.display = 'none';
             }
+        };
+
+        updateFieldVisibility(event.type);
+
+        typeSelect.addEventListener('change', (e) => {
+            updateFieldVisibility(e.target.value);
         });
     }
 
@@ -645,14 +748,17 @@ class BabyTracker {
         const amountInput = eventItem.querySelector('.edit-amount');
         const diaperSubtypeSelect = eventItem.querySelector('.edit-diaper-subtype');
         const timeInput = eventItem.querySelector('.edit-time');
+        const saveButton = eventItem.querySelector('.btn-save');
 
         const newType = typeSelect.value;
+        const selectedConfig = this.EVENT_CONFIG[newType] || {};
         let newAmount = null;
         let diaperSubtype = null;
 
-        if (newType === 'milk' || newType === 'sleep') {
+        if (selectedConfig.requiresAmount) {
             if (!amountInput.value || isNaN(amountInput.value) || parseInt(amountInput.value) <= 0) {
-                alert(`Please enter a valid ${newType === 'milk' ? 'milk amount' : 'sleep duration'}`);
+                const amountLabel = newType === 'milk' ? 'milk amount' : 'sleep duration';
+                alert(`Please enter a valid ${amountLabel}`);
                 return;
             }
             newAmount = parseInt(amountInput.value);
@@ -676,6 +782,9 @@ class BabyTracker {
             alert('Please enter a valid date and time');
             return;
         }
+
+        this.setButtonLoading(saveButton, true, 'Saving...');
+        let loadingActive = true;
 
         try {
             const requestBody = {
@@ -710,9 +819,17 @@ class BabyTracker {
 
             await this.loadEvents();
             await this.updateStats();
+            await this.renderTimeline();
+            this.setButtonLoading(saveButton, false);
+            loadingActive = false;
+            this.showButtonSuccess(saveButton, 'Saved!');
         } catch (error) {
             console.error('Error updating event:', error);
             alert('Failed to update event: ' + error.message);
+        } finally {
+            if (loadingActive) {
+                this.setButtonLoading(saveButton, false);
+            }
         }
     }
 
@@ -919,6 +1036,13 @@ class BabyTracker {
         printWindow.print();
     }
 
+    updateThemeIcon(button) {
+        if (!button) return;
+        const iconSpan = button.querySelector('.theme-icon');
+        if (!iconSpan) return;
+        iconSpan.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+    }
+
     formatDateTimeInTimezone(date, timeZone) {
         try {
             const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -1031,51 +1155,91 @@ class BabyTracker {
         return `${year}-${month}-${day}`;
     }
 
-    getDiaperIcon(subtype) {
-        const icons = {
-            pee: '💧',
-            poo: '💩',
-            both: '💧💩'
-        };
-        return icons[subtype] || '💩';
+    setButtonLoading(button, isLoading, loadingText = null) {
+        if (!button) return;
+
+        if (isLoading) {
+            button.dataset.originalText = button.textContent;
+            button.disabled = true;
+            button.classList.add('loading');
+            if (loadingText) {
+                button.textContent = loadingText;
+            }
+        } else {
+            button.disabled = false;
+            button.classList.remove('loading');
+            if (button.dataset.originalText) {
+                button.textContent = button.dataset.originalText;
+                delete button.dataset.originalText;
+            }
+        }
     }
 
-    getDiaperLabel(subtype) {
-        const labels = {
-            pee: 'Diaper Change (Pee)',
-            poo: 'Diaper Change (Poo)',
-            both: 'Diaper Change (Both)'
-        };
-        return labels[subtype] || 'Diaper Change';
+    setLoadingOverlay(section, show) {
+        if (!section) return;
+        let overlay = section.querySelector('.loading-overlay');
+
+        if (show && !overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = '<div class="spinner"></div>';
+            if (getComputedStyle(section).position === 'static') {
+                section.style.position = 'relative';
+            }
+            section.appendChild(overlay);
+        } else if (!show && overlay) {
+            overlay.remove();
+        }
+    }
+
+    showButtonSuccess(button, text = 'Done!') {
+        if (!button) {
+            return;
+        }
+        const originalText = button.textContent;
+        button.textContent = text;
+        button.classList.add('success');
+        setTimeout(() => {
+            button.classList.remove('success');
+            button.textContent = originalText;
+        }, 1500);
     }
 
     async renderTimeline() {
         try {
-            const sourceEvents = this.allEvents && this.allEvents.length ? this.allEvents : this.events;
-            // Get today's events
-            const today = new Date();
-            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+            const hoursContainer = document.querySelector('.timeline-hours');
+            const eventsContainer = document.querySelector('.timeline-events');
+            if (!hoursContainer || !eventsContainer) {
+                return;
+            }
 
-            // Filter events from today
+            const sourceEvents = this.allEvents && this.allEvents.length ? this.allEvents : this.events;
+            const tz = this.homeTimezone || this.localTimezone;
+            const now = new Date();
+            const startOfDay = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(startOfDay);
+            endOfDay.setHours(23, 59, 59, 999);
+
             const todayEvents = sourceEvents.filter(event => {
                 const eventDate = new Date(event.timestamp);
-                return eventDate >= startOfDay && eventDate <= endOfDay;
+                const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
+                return eventInTz >= startOfDay && eventInTz <= endOfDay;
             });
 
-            // Render the timeline hours (0, 6, 12, 18, 24)
-            const hoursContainer = document.querySelector('.timeline-hours');
             hoursContainer.innerHTML = '<div></div><div class="timeline-hours-labels"></div><div></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
-            [0, 6, 12, 18, 24].forEach(hour => {
+            const hourLabels = [];
+            for (let hour = 0; hour <= this.UI_CONSTANTS.TIMELINE_HOURS; hour += 6) {
+                hourLabels.push(hour);
+            }
+            hourLabels.forEach(hour => {
                 const hourDiv = document.createElement('div');
                 hourDiv.className = 'timeline-hour';
-                hourDiv.textContent = `${hour}:00`;
+                hourDiv.textContent = `${hour.toString().padStart(2, '0')}:00`;
                 labelsContainer.appendChild(hourDiv);
             });
 
-            // Render the events
-            const eventsContainer = document.querySelector('.timeline-events');
             eventsContainer.innerHTML = '';
 
             if (todayEvents.length === 0) {
@@ -1083,85 +1247,67 @@ class BabyTracker {
                 return;
             }
 
-            // Event configuration
-            const eventTypes = [
-                { type: 'milk', icon: '🍼', label: 'Milk' },
-                { type: 'diaper', icon: '💩', label: 'Diaper' },
-                { type: 'bath', icon: '🛁', label: 'Bath' },
-                { type: 'sleep', icon: '😴', label: 'Sleep' }
-            ];
-
-            // Group events by type (consolidate poo into diaper)
+            const timelineTypes = ['milk', 'diaper', 'bath', 'sleep'];
             const eventsByType = {};
             todayEvents.forEach(event => {
-                // Consolidate legacy 'poo' events into 'diaper'
-                const eventType = event.type === 'poo' ? 'diaper' : event.type;
-                if (!eventsByType[eventType]) {
-                    eventsByType[eventType] = [];
+                const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
+                if (!eventsByType[normalizedType]) {
+                    eventsByType[normalizedType] = [];
                 }
-                eventsByType[eventType].push(event);
+                eventsByType[normalizedType].push(event);
             });
 
-            // Create a lane for each event type
-            eventTypes.forEach(({ type, icon, label }) => {
+            timelineTypes.forEach(type => {
+                const config = this.EVENT_CONFIG[type] || {};
                 const laneDiv = document.createElement('div');
                 laneDiv.className = 'timeline-lane';
 
-                // Lane label
                 const labelDiv = document.createElement('div');
                 labelDiv.className = 'timeline-lane-label';
-                labelDiv.innerHTML = `<span>${icon}</span><span>${label}</span>`;
+                labelDiv.innerHTML = `<span>${config.icon || '📝'}</span><span>${config.label || type}</span>`;
                 laneDiv.appendChild(labelDiv);
 
-                // Lane track
                 const trackDiv = document.createElement('div');
                 trackDiv.className = 'timeline-lane-track';
 
-                // Add events for this type
                 const events = eventsByType[type] || [];
                 events.forEach(event => {
                     const eventDate = new Date(event.timestamp);
-                    const hour = eventDate.getHours();
-                    const minute = eventDate.getMinutes();
-                    const timeInMinutes = hour * 60 + minute;
-                    const leftPosition = (timeInMinutes / (24 * 60)) * 100;
-                    const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+                    const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
+                    const minutes = eventInTz.getHours() * 60 + eventInTz.getMinutes();
+                    const leftPosition = (minutes / (24 * 60)) * 100;
 
-                    // Create marker with specific class for diaper subtypes
                     const marker = document.createElement('div');
-                    let markerClass = type;
-                    let diaperLabel = '';
+                    marker.className = 'timeline-marker';
+                    marker.style.left = `${leftPosition}%`;
 
-                    // For diaper events, use different classes based on subtype
                     if (type === 'diaper') {
-                        const subtype = event.subtype || 'poo'; // Default to poo for legacy events
-                        markerClass = `diaper-${subtype}`;
-
-                        // Set label for tooltip
-                        if (subtype === 'pee') {
-                            diaperLabel = 'Pee 💧';
-                        } else if (subtype === 'poo') {
-                            diaperLabel = 'Poo 💩';
-                        } else if (subtype === 'both') {
-                            diaperLabel = 'Pee & Poo 💧💩';
+                        const subtype = event.subtype || 'poo';
+                        marker.classList.add(`diaper-${subtype}`);
+                        const subtypeColor = this.EVENT_CONFIG.diaper?.subtypes?.[subtype]?.color;
+                        if (subtypeColor) {
+                            marker.style.background = subtypeColor;
+                        }
+                    } else {
+                        marker.classList.add(type);
+                        if (config.color) {
+                            marker.style.background = config.color;
                         }
                     }
 
-                    marker.className = `timeline-marker ${markerClass}`;
-                    marker.style.left = `${leftPosition}%`;
-
-                    // Create tooltip
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';
-                    let tooltipText = `${timeString}`;
+                    const icon = type === 'diaper' && event.subtype
+                        ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.icon || config.icon
+                        : config.icon;
+                    const label = type === 'diaper' && event.subtype
+                        ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.label || config.label
+                        : config.label;
+                    let tooltipText = `${icon || '📝'} ${label || type} - ${this.formatDisplayTime(event.timestamp)}`;
 
-                    // Add diaper subtype label
-                    if (type === 'diaper' && diaperLabel) {
-                        tooltipText += ` • ${diaperLabel}`;
-                    } else if (event.type === 'milk' && event.amount) {
-                        tooltipText += ` • ${event.amount}ml`;
-                    } else if (event.type === 'sleep' && event.amount) {
-                        tooltipText += ` • ${event.amount} min`;
+                    if (event.amount && (config.amountUnit || type === 'milk' || type === 'sleep')) {
+                        const unit = config.amountUnit || (type === 'milk' ? 'ml' : type === 'sleep' ? 'min' : '');
+                        tooltipText += ` (${event.amount}${unit})`;
                     }
 
                     if (event.user_name) {
@@ -1177,11 +1323,12 @@ class BabyTracker {
                 laneDiv.appendChild(trackDiv);
                 eventsContainer.appendChild(laneDiv);
             });
-
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');
-            eventsContainer.innerHTML = '<div class="timeline-empty">Error loading timeline</div>';
+            if (eventsContainer) {
+                eventsContainer.innerHTML = '<div class="timeline-empty">Error loading timeline</div>';
+            }
         }
     }
 

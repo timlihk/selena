@@ -6,10 +6,26 @@ const rateLimit = require('express-rate-limit');
 const { initializeDatabase, Event } = require('./database');
 
 // Input validation constants
-const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
-const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
-const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
-const MAX_FILTER_LENGTH = 1000;
+const CONSTANTS = {
+  ALLOWED_EVENT_TYPES: ['milk', 'poo', 'diaper', 'bath', 'sleep'],
+  ALLOWED_DIAPER_SUBTYPES: ['pee', 'poo', 'both'],
+  ALLOWED_USERS: ['Charie', 'Angie', 'Tim', 'Mengyu'],
+  VALIDATION: {
+    MAX_FILTER_LENGTH: 1000,
+    MAX_MILK_AMOUNT: 500,
+    MAX_SLEEP_DURATION: 480,
+    TIMESTAMP_MAX_PAST_DAYS: 365
+  },
+  RATE_LIMIT: {
+    WINDOW_MS: 15 * 60 * 1000,
+    MAX_REQUESTS: 100
+  },
+  DB_POOL: {
+    MAX: 20,
+    IDLE_TIMEOUT_MS: 30000,
+    CONNECTION_TIMEOUT_MS: 2000
+  }
+};
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
 
@@ -21,8 +37,8 @@ app.set('trust proxy', 1);
 
 // Rate limiting configuration
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: CONSTANTS.RATE_LIMIT.WINDOW_MS,
+  max: CONSTANTS.RATE_LIMIT.MAX_REQUESTS,
   message: {
     error: 'Too many requests from this IP, please try again later.'
   },
@@ -52,8 +68,10 @@ async function getEventsHandler(req, res) {
     const rawType = typeof req.query.type === 'string' ? req.query.type.trim() : '';
     const typeFilter = rawType && rawType !== 'all' ? rawType : '';
 
-    if (typeFilter && !ALLOWED_EVENT_TYPES.includes(typeFilter)) {
-      return res.status(400).json({ error: 'Invalid event type' });
+    if (typeFilter && !CONSTANTS.ALLOWED_EVENT_TYPES.includes(typeFilter)) {
+      return res.status(400).json({
+        error: `Invalid event type. Allowed types: ${CONSTANTS.ALLOWED_EVENT_TYPES.join(', ')}`
+      });
     }
 
     let events;
@@ -63,7 +81,7 @@ async function getEventsHandler(req, res) {
         return res.status(400).json({ error: 'Invalid filter format' });
       }
 
-      if (filter.length > MAX_FILTER_LENGTH) {
+      if (filter.length > CONSTANTS.VALIDATION.MAX_FILTER_LENGTH) {
         return res.status(400).json({ error: 'Filter parameter is too long' });
       }
 
@@ -107,16 +125,20 @@ app.post('/api/events', async (req, res) => {
       return res.status(400).json({ error: 'Event type is required' });
     }
 
-    if (!ALLOWED_EVENT_TYPES.includes(type)) {
-      return res.status(400).json({ error: 'Invalid event type' });
+    if (!CONSTANTS.ALLOWED_EVENT_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: `Invalid event type. Allowed types: ${CONSTANTS.ALLOWED_EVENT_TYPES.join(', ')}`
+      });
     }
 
     if (!userName) {
       return res.status(400).json({ error: 'User name is required' });
     }
 
-    if (!ALLOWED_USERS.includes(userName)) {
-      return res.status(400).json({ error: 'Invalid user' });
+    if (!CONSTANTS.ALLOWED_USERS.includes(userName)) {
+      return res.status(400).json({
+        error: `Invalid user. Allowed users: ${CONSTANTS.ALLOWED_USERS.join(', ')}`
+      });
     }
 
     // Validate timestamp if provided
@@ -133,8 +155,13 @@ app.post('/api/events', async (req, res) => {
       eventTimestamp = parsedTimestamp.toISOString();
     }
 
-    if (type === 'milk' && (!amount || isNaN(amount) || amount <= 0)) {
-      return res.status(400).json({ error: 'Milk amount is required and must be a positive number' });
+    if (type === 'milk') {
+      const parsedAmount = parseInt(amount, 10);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > CONSTANTS.VALIDATION.MAX_MILK_AMOUNT) {
+        return res.status(400).json({
+          error: `Milk amount must be between 1 and ${CONSTANTS.VALIDATION.MAX_MILK_AMOUNT} ml`
+        });
+      }
     }
 
     // Validate diaper subtype
@@ -142,8 +169,10 @@ app.post('/api/events', async (req, res) => {
       if (!diaperSubtype) {
         return res.status(400).json({ error: 'Diaper subtype is required (pee, poo, or both)' });
       }
-      if (!ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
-        return res.status(400).json({ error: 'Invalid diaper subtype. Must be pee, poo, or both' });
+      if (!CONSTANTS.ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
+        return res.status(400).json({
+          error: `Invalid diaper subtype. Allowed subtypes: ${CONSTANTS.ALLOWED_DIAPER_SUBTYPES.join(', ')}`
+        });
       }
     }
 
@@ -174,16 +203,20 @@ app.post('/api/events', async (req, res) => {
         }
       } else {
         // Legacy sleep event with manual duration
-        if (!amount || amount <= 0) {
-          return res.status(400).json({ error: 'Sleep duration is required and must be positive' });
+        if (!amount || amount <= 0 || amount > CONSTANTS.VALIDATION.MAX_SLEEP_DURATION) {
+          return res.status(400).json({
+            error: `Sleep duration is required and must be between 1 and ${CONSTANTS.VALIDATION.MAX_SLEEP_DURATION} minutes`
+          });
         }
         calculatedAmount = parseInt(amount);
       }
     } else {
       calculatedAmount = type === 'milk' ? parseInt(amount) : null;
       // Additional validation after parsing for milk events
-      if (type === 'milk' && (isNaN(calculatedAmount) || calculatedAmount <= 0)) {
-        return res.status(400).json({ error: 'Milk amount must be a valid positive number' });
+      if (type === 'milk' && (isNaN(calculatedAmount) || calculatedAmount <= 0 || calculatedAmount > CONSTANTS.VALIDATION.MAX_MILK_AMOUNT)) {
+        return res.status(400).json({
+          error: `Milk amount must be between 1 and ${CONSTANTS.VALIDATION.MAX_MILK_AMOUNT} ml`
+        });
       }
 
       // Check if there's an incomplete sleep event for this user
@@ -275,8 +308,10 @@ async function updateEventHandler(req, res) {
       return res.status(400).json({ error: 'Event type is required' });
     }
 
-    if (!ALLOWED_EVENT_TYPES.includes(type)) {
-      return res.status(400).json({ error: 'Invalid event type' });
+    if (!CONSTANTS.ALLOWED_EVENT_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: `Invalid event type. Allowed types: ${CONSTANTS.ALLOWED_EVENT_TYPES.join(', ')}`
+      });
     }
 
     const existingEvent = await Event.getById(eventId);
@@ -289,14 +324,18 @@ async function updateEventHandler(req, res) {
 
     if (type === 'milk') {
       const parsedAmount = parseInt(amount, 10);
-      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-        return res.status(400).json({ error: 'Milk amount is required and must be a valid positive number' });
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > CONSTANTS.VALIDATION.MAX_MILK_AMOUNT) {
+        return res.status(400).json({
+          error: `Milk amount is required and must be between 1 and ${CONSTANTS.VALIDATION.MAX_MILK_AMOUNT} ml`
+        });
       }
       normalizedAmount = parsedAmount;
     } else if (type === 'sleep') {
       const parsedAmount = parseInt(amount, 10);
-      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-        return res.status(400).json({ error: 'Sleep duration is required and must be a valid positive number' });
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > CONSTANTS.VALIDATION.MAX_SLEEP_DURATION) {
+        return res.status(400).json({
+          error: `Sleep duration is required and must be between 1 and ${CONSTANTS.VALIDATION.MAX_SLEEP_DURATION} minutes`
+        });
       }
       normalizedAmount = parsedAmount;
     }
@@ -322,8 +361,10 @@ async function updateEventHandler(req, res) {
       if (!diaperSubtype) {
         return res.status(400).json({ error: 'Diaper subtype is required (pee, poo, or both)' });
       }
-      if (!ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
-        return res.status(400).json({ error: 'Invalid diaper subtype. Must be pee, poo, or both' });
+      if (!CONSTANTS.ALLOWED_DIAPER_SUBTYPES.includes(diaperSubtype)) {
+        return res.status(400).json({
+          error: `Invalid diaper subtype. Allowed subtypes: ${CONSTANTS.ALLOWED_DIAPER_SUBTYPES.join(', ')}`
+        });
       }
       eventSubtype = diaperSubtype;
     } else if (type === 'poo') {
