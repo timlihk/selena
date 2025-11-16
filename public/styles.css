@@ -358,6 +358,22 @@ body.light-mode {
     font-weight: 600;
 }
 
+.event-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.event-actions button {
+    min-width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border-radius: 8px;
+}
+
 .no-events {
     text-align: center;
     color: #a0aec0;
@@ -981,7 +997,7 @@ button.loading::after {
 
     .event-item {
         padding: 12px;
-        flex-direction: column;
+        flex-direction: row;
         align-items: flex-start;
         gap: 12px;
     }
@@ -990,6 +1006,7 @@ button.loading::after {
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
+        flex: 1;
     }
 
     .event-type {
@@ -1003,13 +1020,17 @@ button.loading::after {
 
     .event-actions {
         flex-direction: column;
-        gap: 8px;
-        width: 100%;
+        gap: 6px;
+        width: auto;
+        align-items: flex-end;
     }
 
     .event-actions button {
-        width: 100%;
-        padding: 10px;
+        width: auto;
+        min-width: 32px;
+        height: 32px;
+        padding: 6px;
+        font-size: 18px;
     }
 
     h1 {
