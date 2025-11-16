@@ -60,6 +60,7 @@ class BabyTracker {
         this.events = [];
         this.allEvents = [];
         this.manualTimeOverride = false;
+        this.activeTimelineMarker = null;
         this.localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         this.defaultHomeTimezone = 'Asia/Hong_Kong';
         this.homeTimezone = this.defaultHomeTimezone;
@@ -114,6 +115,12 @@ class BabyTracker {
         const applyCustomRange = document.getElementById('applyCustomRange');
         const exportCSV = document.getElementById('exportCSV');
         const exportPDF = document.getElementById('exportPDF');
+        document.addEventListener('click', () => {
+            if (this.activeTimelineMarker) {
+                this.activeTimelineMarker.classList.remove('show-tooltip');
+                this.activeTimelineMarker = null;
+            }
+        });
 
         const themeToggle = document.getElementById('themeToggle');
         if (themeToggle) {
@@ -1317,6 +1324,25 @@ class BabyTracker {
                     tooltip.style.whiteSpace = 'pre-line';
 
                     marker.appendChild(tooltip);
+
+                    marker.addEventListener('click', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== marker) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                        }
+                        marker.classList.toggle('show-tooltip');
+                        this.activeTimelineMarker = marker.classList.contains('show-tooltip') ? marker : null;
+                    });
+
+                    marker.addEventListener('touchstart', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== marker) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                        }
+                        marker.classList.add('show-tooltip');
+                        this.activeTimelineMarker = marker;
+                    }, { passive: true });
+
                     trackDiv.appendChild(marker);
                 });
 
