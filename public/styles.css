@@ -783,14 +783,13 @@ button.loading::after {
 .timeline-hours {
     display: flex;
     justify-content: center;
-    margin: 0 20px 15px 20px;
+    margin: 0 24px 15px 56px;
     border-bottom: 2px solid var(--timeline-line);
     padding-bottom: 8px;
 }
 
 .timeline-hours-labels {
     width: 100%;
-    max-width: calc(100% - 40px);
     display: flex;
     justify-content: space-between;
 }
@@ -810,7 +809,7 @@ button.loading::after {
 
 .timeline-lane {
     display: grid;
-    grid-template-columns: 80px 1fr;
+    grid-template-columns: 56px 1fr;
     align-items: center;
     min-height: 60px;
     border-bottom: 1px solid var(--border-color);
@@ -824,11 +823,11 @@ button.loading::after {
 .timeline-lane-label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
+    justify-content: center;
+    gap: 4px;
+    font-size: 1.1rem;
     color: var(--text-secondary);
-    padding-left: 10px;
+    padding-left: 0;
 }
 
 .timeline-lane-track {
@@ -836,6 +835,7 @@ button.loading::after {
     height: 40px;
     background: var(--timeline-hour-bg);
     border-radius: 20px;
+    margin-right: 24px;
 }
 
 .timeline-marker {
@@ -932,24 +932,21 @@ button.loading::after {
 
 @media (max-width: 768px) {
     .timeline-hours {
-        grid-template-columns: 70px 1fr 40px;
+        margin: 0 16px 12px 56px;
     }
 
     .timeline-hour {
-        font-size: 0.6rem;
+        font-size: 0.65rem;
     }
 
     .timeline-lane {
-        grid-template-columns: 70px 1fr 40px;
-        min-height: 50px;
-    }
-
-    .timeline-lane-label {
-        font-size: 0.8rem;
+        grid-template-columns: 56px 1fr;
+        min-height: 54px;
     }
 
     .timeline-lane-track {
         height: 32px;
+        margin-right: 16px;
     }
 
     .timeline-marker {
@@ -1062,8 +1059,7 @@ button.loading::after {
     }
 
     .timeline-hours {
-        margin-left: 0;
-        padding: 0 4px 8px;
+        margin: 0 12px 12px 48px;
         border-bottom: 1px solid var(--border-color);
     }
 
@@ -1071,16 +1067,12 @@ button.loading::after {
         width: 100%;
     }
 
-    .timeline-hours {
-        margin: 0 8px 12px;
-    }
-
-    .timeline-hours-labels {
-        max-width: 100%;
-    }
-
     .timeline-lane {
-        grid-template-columns: 50px 1fr;
+        grid-template-columns: 48px 1fr;
+    }
+
+    .timeline-lane-track {
+        margin-right: 12px;
     }
 
     .timeline-lane {
