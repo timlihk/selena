@@ -781,15 +781,15 @@ button.loading::after {
 }
 
 .timeline-hours {
-    display: grid;
-    grid-template-columns: 100px 1fr 60px;
-    margin-bottom: 15px;
+    display: flex;
+    justify-content: center;
+    margin: 0 0 15px 100px;
     border-bottom: 2px solid var(--timeline-line);
     padding-bottom: 8px;
 }
 
 .timeline-hours-labels {
-    grid-column: 2;
+    flex: 1;
     display: flex;
     justify-content: space-between;
 }
@@ -809,7 +809,7 @@ button.loading::after {
 
 .timeline-lane {
     display: grid;
-    grid-template-columns: 100px 1fr 60px;
+    grid-template-columns: 100px 1fr;
     align-items: center;
     min-height: 60px;
     border-bottom: 1px solid var(--border-color);
@@ -1061,19 +1061,17 @@ button.loading::after {
     }
 
     .timeline-hours {
-        display: block;
+        margin-left: 0;
         padding: 0 4px 8px;
         border-bottom: 1px solid var(--border-color);
     }
 
     .timeline-hours-labels {
-        display: flex;
-        justify-content: space-between;
+        width: 100%;
     }
 
     .timeline-hour {
         font-size: 0.7rem;
-        min-width: auto;
     }
 
     .timeline-lane {

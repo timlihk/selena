@@ -1234,7 +1234,7 @@ class BabyTracker {
                 return eventInTz >= startOfDay && eventInTz <= endOfDay;
             });
 
-            hoursContainer.innerHTML = '<div></div><div class="timeline-hours-labels"></div><div></div>';
+            hoursContainer.innerHTML = '<div class="timeline-hours-labels"></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
             const hourLabels = [];
             for (let hour = 0; hour <= this.UI_CONSTANTS.TIMELINE_HOURS; hour += 6) {
