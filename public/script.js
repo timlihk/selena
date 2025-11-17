@@ -1271,7 +1271,7 @@ class BabyTracker {
 
                 const labelDiv = document.createElement('div');
                 labelDiv.className = 'timeline-lane-label';
-                labelDiv.innerHTML = `<span>${config.icon || '📝'}</span><span>${config.label || type}</span>`;
+                labelDiv.innerHTML = `<span>${config.icon || '📝'}</span>`;
                 laneDiv.appendChild(labelDiv);
 
                 const trackDiv = document.createElement('div');
