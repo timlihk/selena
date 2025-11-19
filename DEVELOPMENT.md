@@ -31,10 +31,13 @@ This guide covers:
 
 ```
 selena/
-├── 📄 index.html          # Main HTML entry point
-├── 🎨 styles.css          # Complete CSS styling
-├── ⚡ script.js           # Frontend JavaScript logic
-├── 🖥️ server.js           # Express.js server
+├── public/                # Frontend files (served statically)
+│   ├── 📄 index.html      # Main HTML entry point
+│   ├── 🎨 styles.css      # Complete CSS with dark mode & responsive design
+│   └── ⚡ script.js       # Frontend JavaScript with timeline visualization
+├── tests/                 # Test files
+│   └── 🧪 run-tests.js    # Automated test suite
+├── 🖥️ server.js           # Express.js server with API endpoints
 ├── 🗄️ database.js         # Database configuration and models
 ├── 📦 package.json        # Dependencies and scripts
 ├── 🚄 railway.json        # Railway deployment configuration
@@ -121,7 +124,33 @@ Visit: http://localhost:3000
 
 ## 3. 🔧 Code Structure
 
-### Frontend Architecture (`script.js`)
+### Frontend Architecture (`public/script.js`)
+
+#### Configuration Constants
+
+```javascript
+// Event type configuration (lines 3-44)
+const EVENT_CONFIG = {
+  milk: {
+    icon: '🍼',
+    label: 'Milk',
+    color: '#4299e1',
+    requiresAmount: true,
+    maxAmount: 500
+  },
+  diaper: {
+    icon: '💩',
+    label: 'Diaper',
+    color: '#48bb78',
+    subtypes: ['pee', 'poo', 'both']
+  },
+  // ... other event types
+};
+
+// UI and validation constants
+const UI_CONSTANTS = { TIMELINE_HOURS: 24, /* ... */ };
+const VALIDATION = { /* validation rules */ };
+```
 
 #### BabyTracker Class
 
@@ -129,13 +158,16 @@ Visit: http://localhost:3000
 class BabyTracker {
   constructor() {
     this.events = [];
+    this.activeTimelineMarker = null; // For touch-friendly tooltips
     this.init();
   }
 
   async init() {
+    this.initializeTheme(); // Dark mode setup
     this.bindEvents();
     await this.loadEvents();
     await this.updateStats();
+    this.renderTimeline(); // 24-hour timeline visualization
   }
 
   // Event handling
@@ -149,16 +181,35 @@ class BabyTracker {
   // UI rendering
   renderEvents() { /* ... */ }
   createEventHTML(event) { /* ... */ }
+  renderTimeline() { /* Horizontal 24-hour timeline */ }
+
+  // Theme management
+  initializeTheme() { /* Dark mode toggle */ }
+  toggleTheme() { /* Switch between light/dark */ }
 }
 ```
 
 #### Key Methods
 
-- `bindEvents()` - Sets up event listeners
-- `addEvent()` - Handles form submission
+- `bindEvents()` - Sets up event listeners (including touch events for mobile)
+- `addEvent()` - Handles form submission with loading states
 - `loadEvents()` - Fetches events from API
 - `updateStats()` - Updates statistics display
-- `renderEvents()` - Renders events list
+- `renderEvents()` - Renders events list with inline edit capability
+- `renderTimeline()` - Creates horizontal 24-hour timeline with event markers
+- `initializeTheme()` - Sets up dark mode from localStorage or system preference
+- `toggleTheme()` - Switches between light and dark themes
+
+#### Timeline Architecture
+
+The timeline renders a horizontal 24-hour visualization (00:00 to 24:00) with:
+- **Hour ruler**: Displays time markers at 6-hour intervals
+- **Event lanes**: One lane per event type (milk, diaper, bath, sleep)
+- **Event markers**: Positioned at their actual times with tooltips
+- **Responsive layout**:
+  - Desktop (>768px): 56px icon column, 24px right margin
+  - Tablet (≤768px): 56px icon column, 16px right margin
+  - Mobile (≤480px): 48px icon column, 12px right margin
 
 ### Backend Architecture (`server.js`)
 
@@ -545,24 +596,61 @@ class BabyTracker {
 #### Organization
 
 ```css
-/* 1. Reset and base styles */
+/* 1. CSS Variables for theming */
+:root {
+  --bg-primary: #f0f4f8;
+  --text-primary: #1a202c;
+  --accent-primary: #667eea;
+  /* ... */
+}
+
+/* 2. Dark mode variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1a202c;
+    --text-primary: #f7fafc;
+    /* ... */
+  }
+}
+
+/* 3. Reset and base styles */
 * { /* ... */ }
 
-/* 2. Layout components */
+/* 4. Layout components */
 .container { /* ... */ }
 
-/* 3. Specific components */
-.event-item { /* ... */ }
+/* 5. Timeline components */
+.timeline-hours { /* ... */ }
+.timeline-lane { /* ... */ }
 
-/* 4. Responsive design */
-@media (max-width: 768px) { /* ... */ }
+/* 6. Responsive design */
+@media (max-width: 768px) { /* Tablet */ }
+@media (max-width: 480px) { /* Mobile */ }
 ```
+
+#### Responsive Breakpoints
+
+The application uses two primary breakpoints:
+
+| Breakpoint | Screen Width | Target Devices | Key Changes |
+|------------|--------------|----------------|-------------|
+| **Desktop** | > 768px | Desktops, laptops | 56px icon column, full spacing |
+| **Tablet** | ≤ 768px | Tablets, small laptops | 56px icon column, reduced margins |
+| **Mobile** | ≤ 480px | Smartphones | 48px icon column, compact layout |
+
+#### Dark Mode Implementation
+
+- CSS variables for all colors (enables easy theme switching)
+- `prefers-color-scheme` media query for system preference detection
+- `data-theme` attribute on `<html>` for manual override
+- localStorage persistence of user preference
 
 #### Naming
 
 - Use semantic class names
 - Follow BEM methodology if complex
 - Use consistent naming patterns
+- Timeline classes: `.timeline-*` for all timeline components
 
 ### Git Standards
 

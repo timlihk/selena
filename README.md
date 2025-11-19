@@ -8,10 +8,15 @@ A full-stack web application for tracking newborn baby activities including milk
 
 - **📊 Event Tracking**: Record milk feeds (with ml amount), diaper changes (pee/poo/both), bath times, and guided sleep sessions
 - **📈 Real-time Statistics**: View today's summary with event counts and total milk consumption
+- **⏰ 24-Hour Timeline**: Visual timeline showing all events positioned at their actual times across the day
 - **😴 Smart Sleep Tracking**: Fall-asleep/wake-up buttons automatically calculate sleep duration and close open sessions
-- **📱 Responsive Design**: Mobile-first design that works on all devices
+- **🌙 Dark Mode**: Toggle between light and dark themes with automatic preference detection
+- **⏱️ Custom Time/Date**: Set custom times for events with datetime picker
+- **📅 Date Filtering**: Filter events by today, yesterday, last 7/30 days, or custom date ranges
+- **📤 Export Data**: Export events to CSV or PDF formats
+- **📱 Responsive Design**: Mobile-optimized with breakpoints at 768px and 480px, touch-friendly timeline
 - **💾 Data Persistence**: PostgreSQL database for reliable data storage
-- **🎨 Beautiful UI**: Clean, modern interface with smooth animations
+- **🎨 Beautiful UI**: Clean, modern interface with smooth animations and loading states
 - **🔒 Security**: HTTPS, input validation, and secure database connections
 - **⚡ Performance**: Optimized database queries and efficient rendering
 
@@ -62,16 +67,21 @@ A full-stack web application for tracking newborn baby activities including milk
 
 ```
 selena/
-├── 📄 index.html          # Main HTML entry point
-├── 🎨 styles.css          # Complete CSS styling
-├── ⚡ script.js           # Frontend JavaScript logic
+├── public/                # Frontend files
+│   ├── 📄 index.html      # Main HTML entry point
+│   ├── 🎨 styles.css      # Complete CSS styling with dark mode
+│   └── ⚡ script.js       # Frontend JavaScript with timeline
+├── tests/                 # Test files
+│   └── 🧪 run-tests.js    # Automated test suite
 ├── 🖥️ server.js           # Express.js server
 ├── 🗄️ database.js         # Database configuration and models
 ├── 📦 package.json        # Dependencies and scripts
 ├── 🚄 railway.json        # Railway deployment configuration
 ├── 🔧 .env.example        # Environment variables template
 ├── 📚 README.md           # This documentation
-└── 📋 API.md              # API documentation
+├── 📋 API.md              # API documentation
+├── 🚀 DEPLOYMENT.md       # Deployment guide
+└── 🛠️ DEVELOPMENT.md      # Development guide
 ```
 
 ## 📊 Database Schema
@@ -123,23 +133,30 @@ DB_STORAGE_TIMEZONE=UTC
    - Milk: enter the amount in ml
    - Diaper: choose pee/poo/both using the buttons
    - Sleep: use the dedicated Fall Asleep / Wake Up buttons instead of the main form
-3. **Identify the Recorder**: Pick the caregiver under "Who is recording"
-4. **Add Event**: Click "Add Event" (or the sleep buttons) to record the activity
+3. **Set Time**: Default is "now", or pick a custom date/time with the datetime picker
+4. **Identify the Recorder**: Pick the caregiver under "Who is recording"
+5. **Add Event**: Click "Add Event" (or the sleep buttons) to record the activity
 
 ### Viewing Data
 
+- **24-Hour Timeline**: Visual representation of today's events positioned at their actual times (00:00-24:00)
+  - Icon-only lanes for each event type with color-coded markers
+  - Touch-friendly on mobile with tap-to-view tooltips
+  - Responsive layout optimized for desktop (56px icons) and mobile (48px icons)
 - **Recent Events**: See all recorded events in reverse chronological order
+- **Date Filtering**: Filter by today, yesterday, last 7/30 days, or custom date range
 - **Today's Summary**: View counts for each event type and total milk consumed
-- **Event Details**: Each event shows timestamp and amount (for milk feeds)
+- **Export Options**: Download events as CSV or PDF
+- **Dark Mode**: Toggle theme using the moon/sun icon in the header
 
 ### Event Types
 
 | Type | Icon | Description | Data Collected |
 |------|------|-------------|----------------|
-| 🍼 Milk | 🍼 | Milk feeding session | Amount in ml |
-| 💩 Diaper | 💧 / 💩 | Diaper change with pee/poo/both subtype | Subtype only |
-| 😴 Sleep | 😴 | Sleep session using fall-asleep/wake-up buttons | Duration in minutes |
-| 🛁 Bath | 🛁 | Bath time | - |
+| 🍼 Milk | 🍼 | Milk feeding session | Amount in ml, timestamp |
+| 💩 Diaper | 💧/💩/💧💩 | Diaper change (pee/poo/both) | Subtype (pee, poo, both), timestamp |
+| 😴 Sleep | 😴 | Sleep session with duration tracking | Start time, end time, duration (minutes) |
+| 🛁 Bath | 🛁 | Bath time | Timestamp |
 
 ## 🚀 Deployment
 
@@ -186,23 +203,31 @@ See [API.md](API.md) for complete API documentation.
 
 ### Code Structure
 
-#### Frontend (`script.js`)
+#### Frontend (`public/script.js`)
 - `BabyTracker` class manages application state
-- Event listeners for user interactions
+- `EVENT_CONFIG` centralized configuration for event types (icons, colors, labels, validation)
+- `UI_CONSTANTS` and `VALIDATION` constants for maintainability
+- Timeline rendering with horizontal 24-hour visualization
+- Dark mode toggle with localStorage persistence
+- Touch-friendly event handlers for mobile devices
+- Loading states and success feedback
 - API communication via Fetch API
 - Dynamic UI updates
 
 #### Backend (`server.js`)
 - Express.js server with middleware
 - RESTful API endpoints
+- `CONSTANTS` object for validation rules and rate limiting
 - Error handling and validation
-- Static file serving
+- Static file serving from `public/` directory
+- Timezone-aware date filtering using `BABY_HOME_TIMEZONE`
 
 #### Database (`database.js`)
-- PostgreSQL connection pool
+- PostgreSQL connection pool with fallback to in-memory store
 - Event CRUD operations
 - Statistics aggregation
-- Database initialization
+- Database initialization and migrations
+- Timezone-aware queries
 
 ### Adding New Features
 
