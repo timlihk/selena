@@ -415,6 +415,130 @@ body.light-mode {
     opacity: 0.9;
 }
 
+/* Intelligence Section */
+.intelligence-section {
+    background: var(--bg-secondary);
+    border-radius: 15px;
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 30px var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.intelligence-section h2 {
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+.intelligence-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.intelligence-container {
+    min-height: 100px;
+}
+
+.intelligence-card {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
+.intelligence-card h3 {
+    margin: 0 0 15px 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.intel-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+    gap: 10px;
+}
+
+.intel-row:last-child {
+    border-bottom: none;
+}
+
+.intel-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.intel-value {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    text-align: right;
+    flex-grow: 1;
+}
+
+.intel-pattern {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+}
+
+.alert-badge {
+    display: inline-block;
+    background: #ef4444;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.alert-text {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.percentage-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-left: 8px;
+}
+
+.percentage-badge.good {
+    background: #10b981;
+    color: white;
+}
+
+.percentage-badge.okay {
+    background: #f59e0b;
+    color: white;
+}
+
+.percentage-badge.alert {
+    background: #ef4444;
+    color: white;
+}
+
+.no-data {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 30px;
+    font-style: italic;
+    opacity: 0.7;
+}
+
 /* Filter Controls */
 .filter-controls {
     background: var(--bg-secondary);
@@ -1116,5 +1240,39 @@ button.loading::after {
 
     .stat-value {
         font-size: 28px;
+    }
+
+    .intelligence-section {
+        padding: 20px;
+    }
+
+    .intelligence-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .intelligence-card {
+        padding: 15px;
+    }
+
+    .intel-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        padding: 8px 0;
+    }
+
+    .intel-label {
+        font-size: 0.85rem;
+    }
+
+    .intel-value {
+        text-align: left;
+        font-size: 0.9rem;
+    }
+
+    .intel-pattern {
+        font-size: 0.8rem;
+        word-break: break-word;
     }
 }

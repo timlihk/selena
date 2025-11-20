@@ -568,6 +568,10 @@ class BabyTracker {
             document.getElementById('sleepCount').textContent = stats.sleep || 0;
             document.getElementById('totalMilk').textContent = stats.totalMilk || 0;
             document.getElementById('totalSleep').textContent = stats.totalSleepHours || 0;
+
+            // Update intelligent insights
+            this.updateFeedingIntelligence();
+            this.updateSleepQuality();
         } catch (error) {
             console.error('Error loading stats:', error);
             document.getElementById('milkCount').textContent = '0';
@@ -577,6 +581,223 @@ class BabyTracker {
             document.getElementById('totalMilk').textContent = '0';
             document.getElementById('totalSleep').textContent = '0';
         }
+    }
+
+    // Calculate feeding interval intelligence
+    calculateFeedingIntelligence() {
+        const todayEvents = this.getTodayEvents();
+        const milkEvents = todayEvents.filter(e => e.type === 'milk')
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (milkEvents.length === 0) {
+            return null;
+        }
+
+        const now = new Date();
+        const lastFeed = new Date(milkEvents[milkEvents.length - 1].timestamp);
+        const timeSinceLastMs = now - lastFeed;
+        const hoursSince = timeSinceLastMs / (1000 * 60 * 60);
+        const minutesSince = Math.floor((timeSinceLastMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        // Calculate intervals between consecutive feedings
+        const intervals = [];
+        for (let i = 1; i < milkEvents.length; i++) {
+            const prev = new Date(milkEvents[i - 1].timestamp);
+            const curr = new Date(milkEvents[i].timestamp);
+            const intervalHours = (curr - prev) / (1000 * 60 * 60);
+            intervals.push(intervalHours);
+        }
+
+        // Calculate average interval
+        const avgInterval = intervals.length > 0
+            ? intervals.reduce((sum, val) => sum + val, 0) / intervals.length
+            : 3; // Default 3 hours if no history
+
+        // Predict next feeding time
+        const nextFeedDue = new Date(lastFeed.getTime() + avgInterval * 60 * 60 * 1000);
+        const timeUntilNextMs = nextFeedDue - now;
+        const minutesUntilNext = Math.floor(timeUntilNextMs / (1000 * 60));
+
+        return {
+            lastFeedTime: lastFeed,
+            hoursSince: Math.floor(hoursSince),
+            minutesSince,
+            intervals: intervals.map(h => (h).toFixed(1)),
+            avgInterval: avgInterval.toFixed(1),
+            nextFeedDue: nextFeedDue,
+            minutesUntilNext,
+            isOverdue: minutesUntilNext < 0
+        };
+    }
+
+    // Calculate sleep quality metrics
+    calculateSleepQuality() {
+        const todayEvents = this.getTodayEvents();
+        const sleepEvents = todayEvents.filter(e => e.type === 'sleep')
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (sleepEvents.length === 0) {
+            return null;
+        }
+
+        // Calculate total sleep in hours
+        const totalSleepMinutes = sleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+        const totalSleepHours = totalSleepMinutes / 60;
+
+        // Find longest sleep stretch
+        const longestSleep = Math.max(...sleepEvents.map(e => e.amount || 0));
+        const longestSleepEvent = sleepEvents.find(e => e.amount === longestSleep);
+
+        // Calculate average nap duration
+        const avgNapMinutes = totalSleepMinutes / sleepEvents.length;
+
+        // Calculate wake windows (gaps between sleep sessions)
+        const wakeWindows = [];
+        for (let i = 1; i < sleepEvents.length; i++) {
+            const prevEnd = new Date(sleepEvents[i - 1].sleep_end_time);
+            const currStart = new Date(sleepEvents[i].sleep_start_time);
+            const gapHours = (currStart - prevEnd) / (1000 * 60 * 60);
+            wakeWindows.push(gapHours);
+        }
+
+        // Find longest wake window
+        const longestWake = wakeWindows.length > 0 ? Math.max(...wakeWindows) : 0;
+
+        // Recommended sleep for newborn (adjustable based on age)
+        const recommendedHours = 15.5;
+        const sleepPercentage = (totalSleepHours / recommendedHours) * 100;
+
+        return {
+            totalHours: totalSleepHours.toFixed(1),
+            totalMinutes: totalSleepMinutes,
+            sessionCount: sleepEvents.length,
+            longestStretchMinutes: longestSleep,
+            longestStretchHours: (longestSleep / 60).toFixed(1),
+            longestStretchTime: longestSleepEvent ? this.formatTime(longestSleepEvent.sleep_start_time) : null,
+            avgNapMinutes: Math.round(avgNapMinutes),
+            avgNapHours: (avgNapMinutes / 60).toFixed(1),
+            wakeWindows: wakeWindows.map(h => h.toFixed(1)),
+            longestWakeHours: longestWake.toFixed(1),
+            recommendedHours,
+            sleepPercentage: Math.round(sleepPercentage),
+            isUnderslept: sleepPercentage < 85
+        };
+    }
+
+    // Get today's events in home timezone
+    getTodayEvents() {
+        const now = new Date();
+        const todayStart = new Date(now.toLocaleString('en-US', { timeZone: this.homeTimezone }));
+        todayStart.setHours(0, 0, 0, 0);
+
+        const todayEnd = new Date(todayStart);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        return this.allEvents.filter(event => {
+            const eventDate = new Date(event.timestamp);
+            return eventDate >= todayStart && eventDate <= todayEnd;
+        });
+    }
+
+    // Update feeding intelligence UI
+    updateFeedingIntelligence() {
+        const intelligence = this.calculateFeedingIntelligence();
+        const container = document.getElementById('feedingIntelligence');
+
+        if (!container) return;
+
+        if (!intelligence) {
+            container.innerHTML = '<p class="no-data">No feeding data yet today</p>';
+            return;
+        }
+
+        const overdueBadge = intelligence.isOverdue
+            ? '<span class="alert-badge">Overdue</span>'
+            : '';
+
+        const timeUntilText = intelligence.isOverdue
+            ? `${Math.abs(intelligence.minutesUntilNext)} min overdue`
+            : `~${intelligence.minutesUntilNext} min`;
+
+        container.innerHTML = `
+            <div class="intelligence-card">
+                <h3>🍼 Feeding Intelligence</h3>
+                <div class="intel-row">
+                    <span class="intel-label">Last fed:</span>
+                    <span class="intel-value">${intelligence.hoursSince}h ${intelligence.minutesSince}m ago</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Next feed due:</span>
+                    <span class="intel-value ${intelligence.isOverdue ? 'alert-text' : ''}">${timeUntilText} ${overdueBadge}</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Average interval:</span>
+                    <span class="intel-value">${intelligence.avgInterval}h</span>
+                </div>
+                ${intelligence.intervals.length > 1 ? `
+                <div class="intel-row">
+                    <span class="intel-label">Today's pattern:</span>
+                    <span class="intel-value intel-pattern">${intelligence.intervals.join('h → ')}h</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // Update sleep quality UI
+    updateSleepQuality() {
+        const quality = this.calculateSleepQuality();
+        const container = document.getElementById('sleepQuality');
+
+        if (!container) return;
+
+        if (!quality) {
+            container.innerHTML = '<p class="no-data">No sleep data yet today</p>';
+            return;
+        }
+
+        const percentageClass = quality.sleepPercentage >= 90 ? 'good' :
+                               quality.sleepPercentage >= 75 ? 'okay' : 'alert';
+
+        const wakeAlert = parseFloat(quality.longestWakeHours) > 4
+            ? '<span class="alert-badge">Long wake window</span>'
+            : '';
+
+        container.innerHTML = `
+            <div class="intelligence-card">
+                <h3>😴 Sleep Quality</h3>
+                <div class="intel-row">
+                    <span class="intel-label">Total today:</span>
+                    <span class="intel-value">${quality.totalHours}h (${quality.sleepPercentage}% of ${quality.recommendedHours}h)</span>
+                    <span class="percentage-badge ${percentageClass}">${quality.sleepPercentage}%</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Longest stretch:</span>
+                    <span class="intel-value">${quality.longestStretchHours}h (${this.formatMinutes(quality.longestStretchMinutes)})</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Sleep sessions:</span>
+                    <span class="intel-value">${quality.sessionCount} naps</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Average nap:</span>
+                    <span class="intel-value">${quality.avgNapHours}h (${quality.avgNapMinutes} min)</span>
+                </div>
+                ${quality.wakeWindows.length > 0 ? `
+                <div class="intel-row">
+                    <span class="intel-label">Wake windows:</span>
+                    <span class="intel-value intel-pattern">${quality.wakeWindows.join('h, ')}h ${wakeAlert}</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // Helper to format minutes as "Xh Ym"
+    formatMinutes(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
     }
 
     // Remove a single event
