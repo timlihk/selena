@@ -592,6 +592,7 @@ class BabyTracker {
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
         if (milkEvents.length === 0) {
+            console.log('calculateFeedingIntelligence: No milk events today');
             return null;
         }
 
@@ -639,6 +640,7 @@ class BabyTracker {
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
         if (sleepEvents.length === 0) {
+            console.log('calculateSleepQuality: No sleep events today');
             return null;
         }
 
@@ -654,12 +656,33 @@ class BabyTracker {
         const avgNapMinutes = totalSleepMinutes / sleepEvents.length;
 
         // Calculate wake windows (gaps between sleep sessions)
+        // Only include sessions with valid start and end times
         const wakeWindows = [];
         for (let i = 1; i < sleepEvents.length; i++) {
-            const prevEnd = new Date(sleepEvents[i - 1].sleep_end_time);
-            const currStart = new Date(sleepEvents[i].sleep_start_time);
+            const prev = sleepEvents[i - 1];
+            const curr = sleepEvents[i];
+
+            // Skip if either event is missing timestamps
+            if (!prev.sleep_end_time || !curr.sleep_start_time) {
+                console.warn('Sleep event missing timestamps:', { prev: prev.id, curr: curr.id });
+                continue;
+            }
+
+            const prevEnd = new Date(prev.sleep_end_time);
+            const currStart = new Date(curr.sleep_start_time);
+
+            // Validate dates
+            if (isNaN(prevEnd.getTime()) || isNaN(currStart.getTime())) {
+                console.warn('Invalid sleep timestamps:', { prevEnd: prev.sleep_end_time, currStart: curr.sleep_start_time });
+                continue;
+            }
+
             const gapHours = (currStart - prevEnd) / (1000 * 60 * 60);
-            wakeWindows.push(gapHours);
+
+            // Only add positive gaps (negative would mean overlapping sessions)
+            if (gapHours > 0) {
+                wakeWindows.push(gapHours);
+            }
         }
 
         // Find longest wake window
@@ -687,17 +710,106 @@ class BabyTracker {
 
     // Get today's events in home timezone
     getTodayEvents() {
-        const now = new Date();
-        const todayStart = new Date(now.toLocaleString('en-US', { timeZone: this.homeTimezone }));
-        todayStart.setHours(0, 0, 0, 0);
+        try {
+            const now = new Date();
 
-        const todayEnd = new Date(todayStart);
-        todayEnd.setHours(23, 59, 59, 999);
+            // Get the current date in home timezone using proper timezone conversion
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: this.homeTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour12: false
+            });
 
-        return this.allEvents.filter(event => {
-            const eventDate = new Date(event.timestamp);
-            return eventDate >= todayStart && eventDate <= todayEnd;
+            const parts = formatter.formatToParts(now);
+            const year = parseInt(parts.find(p => p.type === 'year').value);
+            const month = parseInt(parts.find(p => p.type === 'month').value);
+            const day = parseInt(parts.find(p => p.type === 'day').value);
+
+            // Create start of day in home timezone (00:00:00)
+            const startStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T00:00:00`;
+            const todayStart = this.parseInTimezone(startStr, this.homeTimezone);
+
+            // Create end of day in home timezone (23:59:59.999)
+            const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
+            const todayEnd = this.parseInTimezone(endStr, this.homeTimezone);
+
+            return this.allEvents.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= todayStart && eventDate <= todayEnd;
+            });
+        } catch (error) {
+            console.error('Error in getTodayEvents:', error);
+            // Fallback to simple date comparison in case of error
+            const now = new Date();
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(now);
+            todayEnd.setHours(23, 59, 59, 999);
+
+            return this.allEvents.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= todayStart && eventDate <= todayEnd;
+            });
+        }
+    }
+
+    // Parse a datetime string in a specific timezone and return UTC Date object
+    parseInTimezone(dateTimeStr, timeZone) {
+        // dateTimeStr format: "YYYY-MM-DDTHH:mm:ss" or "YYYY-MM-DDTHH:mm:ss.sss"
+        const parts = dateTimeStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?/);
+        if (!parts) {
+            throw new Error(`Invalid datetime format: ${dateTimeStr}`);
+        }
+
+        const [, year, month, day, hour, minute, second, ms = '0'] = parts;
+
+        // Create a date string that will be interpreted in the target timezone
+        // We'll use Intl.DateTimeFormat to get the offset for this specific date/time
+        const testDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
+
+        // Get the formatted string in the target timezone
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZoneName: 'short'
         });
+
+        // Calculate offset by comparing UTC to timezone
+        // Create the intended time as if it were UTC
+        const utcDate = new Date(Date.UTC(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute),
+            parseInt(second),
+            parseInt(ms)
+        ));
+
+        // Get what time it shows in the target timezone
+        const tzParts = formatter.formatToParts(utcDate);
+        const tzYear = parseInt(tzParts.find(p => p.type === 'year').value);
+        const tzMonth = parseInt(tzParts.find(p => p.type === 'month').value);
+        const tzDay = parseInt(tzParts.find(p => p.type === 'day').value);
+        const tzHour = parseInt(tzParts.find(p => p.type === 'hour').value);
+        const tzMinute = parseInt(tzParts.find(p => p.type === 'minute').value);
+        const tzSecond = parseInt(tzParts.find(p => p.type === 'second').value);
+
+        // Calculate the offset in milliseconds
+        const intendedTime = Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second), parseInt(ms));
+        const actualTime = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, tzMinute, tzSecond, parseInt(ms));
+        const offset = actualTime - utcDate.getTime();
+
+        // Apply the offset to get the correct UTC time
+        return new Date(intendedTime - offset);
     }
 
     // Update feeding intelligence UI
@@ -1560,32 +1672,35 @@ class BabyTracker {
         if (!value) {
             return null;
         }
-        const parsed = new Date(value);
-        if (isNaN(parsed.getTime())) {
-            return null;
-        }
-        const targetTimezone = this.homeTimezone || this.localTimezone;
-        if (!targetTimezone || targetTimezone === this.localTimezone) {
-            return parsed.toISOString();
-        }
+
         try {
-            const options = {
-                timeZone: targetTimezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            };
-            const timezoneString = parsed.toLocaleString('en-US', options);
-            const timezoneAsLocal = new Date(timezoneString);
-            const diff = parsed.getTime() - timezoneAsLocal.getTime();
-            return new Date(parsed.getTime() + diff).toISOString();
+            // The datetime-local input gives us a string like "2025-11-19T14:30"
+            // We need to interpret this as being in the home timezone and convert to UTC
+
+            // Parse the value as-is (it comes from datetime-local input)
+            const match = value.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+            if (!match) {
+                console.error('Invalid datetime-local format:', value);
+                return null;
+            }
+
+            const [, year, month, day, hour, minute] = match;
+            const dateTimeStr = `${year}-${month}-${day}T${hour}:${minute}:00`;
+
+            // Use parseInTimezone to interpret this datetime in the home timezone
+            const utcDate = this.parseInTimezone(dateTimeStr, this.homeTimezone);
+
+            if (!utcDate || isNaN(utcDate.getTime())) {
+                console.error('Failed to parse datetime in timezone:', dateTimeStr, this.homeTimezone);
+                return null;
+            }
+
+            return utcDate.toISOString();
         } catch (error) {
-            console.error('Failed to convert input time using timezone', error);
-            return parsed.toISOString();
+            console.error('Failed to convert input time to home timezone:', error);
+            // Fallback: treat input as local time
+            const parsed = new Date(value);
+            return !isNaN(parsed.getTime()) ? parsed.toISOString() : null;
         }
     }
 
