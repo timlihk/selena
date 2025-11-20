@@ -673,7 +673,6 @@ class BabyTracker {
             sessionCount: sleepEvents.length,
             longestStretchMinutes: longestSleep,
             longestStretchHours: (longestSleep / 60).toFixed(1),
-            longestStretchTime: longestSleepEvent ? this.formatTime(longestSleepEvent.sleep_start_time) : null,
             avgNapMinutes: Math.round(avgNapMinutes),
             avgNapHours: (avgNapMinutes / 60).toFixed(1),
             wakeWindows: wakeWindows.map(h => h.toFixed(1)),
