@@ -572,6 +572,8 @@ class BabyTracker {
             // Update intelligent insights
             this.updateFeedingIntelligence();
             this.updateSleepQuality();
+            this.updateDiaperHealth();
+            this.updateSmartAlerts();
         } catch (error) {
             console.error('Error loading stats:', error);
             document.getElementById('milkCount').textContent = '0';
@@ -797,6 +799,265 @@ class BabyTracker {
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
         return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    // Calculate diaper health metrics
+    calculateDiaperHealth() {
+        const todayEvents = this.getTodayEvents();
+        const diaperEvents = todayEvents.filter(e =>
+            e.type === 'diaper' || e.type === 'poo'
+        ).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (diaperEvents.length === 0) {
+            return null;
+        }
+
+        const now = new Date();
+
+        // Count by subtype
+        let peeCount = 0;
+        let pooCount = 0;
+        let bothCount = 0;
+
+        // Track last occurrence of each type
+        let lastPeeTime = null;
+        let lastPooTime = null;
+        let lastChangeTime = null;
+
+        diaperEvents.forEach(event => {
+            const eventTime = new Date(event.timestamp);
+
+            if (event.type === 'poo') {
+                // Legacy poo events count as poo
+                pooCount++;
+                lastPooTime = eventTime;
+                lastChangeTime = eventTime;
+            } else if (event.subtype === 'pee') {
+                peeCount++;
+                lastPeeTime = eventTime;
+                lastChangeTime = eventTime;
+            } else if (event.subtype === 'poo') {
+                pooCount++;
+                lastPooTime = eventTime;
+                lastChangeTime = eventTime;
+            } else if (event.subtype === 'both') {
+                bothCount++;
+                peeCount++; // Both counts as pee
+                pooCount++; // Both counts as poo
+                lastPeeTime = eventTime;
+                lastPooTime = eventTime;
+                lastChangeTime = eventTime;
+            }
+        });
+
+        // Calculate time since last change
+        const timeSinceLastMs = lastChangeTime ? now - lastChangeTime : null;
+        const hoursSinceLast = timeSinceLastMs ? Math.floor(timeSinceLastMs / (1000 * 60 * 60)) : null;
+        const minutesSinceLast = timeSinceLastMs ? Math.floor((timeSinceLastMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
+
+        // Calculate time since last pee
+        const timeSincePeeMs = lastPeeTime ? now - lastPeeTime : null;
+        const hoursSincePee = timeSincePeeMs ? Math.floor(timeSincePeeMs / (1000 * 60 * 60)) : null;
+        const minutesSincePee = timeSincePeeMs ? Math.floor((timeSincePeeMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
+
+        // Calculate time since last poo
+        const timeSincePooMs = lastPooTime ? now - lastPooTime : null;
+        const hoursSincePoo = timeSincePooMs ? Math.floor(timeSincePooMs / (1000 * 60 * 60)) : null;
+        const minutesSincePoo = timeSincePooMs ? Math.floor((timeSincePooMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
+
+        // Calculate average pee frequency
+        const peeEvents = diaperEvents.filter(e =>
+            e.subtype === 'pee' || e.subtype === 'both'
+        );
+        let avgPeeInterval = null;
+        if (peeEvents.length > 1) {
+            const intervals = [];
+            for (let i = 1; i < peeEvents.length; i++) {
+                const prev = new Date(peeEvents[i - 1].timestamp);
+                const curr = new Date(peeEvents[i].timestamp);
+                intervals.push((curr - prev) / (1000 * 60 * 60));
+            }
+            avgPeeInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
+        }
+
+        return {
+            totalChanges: diaperEvents.length,
+            peeCount,
+            pooCount,
+            bothCount,
+            lastChangeTime,
+            hoursSinceLast,
+            minutesSinceLast,
+            lastPeeTime,
+            hoursSincePee,
+            minutesSincePee,
+            lastPooTime,
+            hoursSincePoo,
+            minutesSincePoo,
+            avgPeeInterval: avgPeeInterval ? avgPeeInterval.toFixed(1) : null,
+            // Alerts
+            noPeeAlert: hoursSincePee >= 4,
+            noPooAlert: hoursSincePoo >= 24,
+            noChangeAlert: hoursSinceLast >= 3
+        };
+    }
+
+    // Calculate smart alerts
+    calculateSmartAlerts() {
+        const todayEvents = this.getTodayEvents();
+        const alerts = [];
+        const now = new Date();
+
+        // Check feeding alerts
+        const feedingIntel = this.calculateFeedingIntelligence();
+        if (feedingIntel && feedingIntel.isOverdue && feedingIntel.minutesUntilNext < -15) {
+            alerts.push({
+                type: 'feeding',
+                severity: 'warning',
+                icon: '🍼',
+                message: `Feeding overdue by ${Math.abs(feedingIntel.minutesUntilNext)} minutes`
+            });
+        }
+
+        // Check diaper alerts
+        const diaperHealth = this.calculateDiaperHealth();
+        if (diaperHealth) {
+            if (diaperHealth.noPeeAlert) {
+                alerts.push({
+                    type: 'diaper',
+                    severity: 'alert',
+                    icon: '💧',
+                    message: `No wet diaper in ${diaperHealth.hoursSincePee}h ${diaperHealth.minutesSincePee}m - check hydration`
+                });
+            }
+            if (diaperHealth.noChangeAlert) {
+                alerts.push({
+                    type: 'diaper',
+                    severity: 'warning',
+                    icon: '💩',
+                    message: `No diaper change in ${diaperHealth.hoursSinceLast}h ${diaperHealth.minutesSinceLast}m`
+                });
+            }
+            if (diaperHealth.noPooAlert) {
+                alerts.push({
+                    type: 'diaper',
+                    severity: 'info',
+                    icon: '💩',
+                    message: `No poo in ${diaperHealth.hoursSincePoo}h - monitor for constipation`
+                });
+            }
+        }
+
+        // Check sleep alerts
+        const sleepQuality = this.calculateSleepQuality();
+        if (sleepQuality) {
+            if (sleepQuality.sleepPercentage < 75) {
+                const deficit = sleepQuality.recommendedHours - parseFloat(sleepQuality.totalHours);
+                alerts.push({
+                    type: 'sleep',
+                    severity: 'alert',
+                    icon: '😴',
+                    message: `Only ${sleepQuality.totalHours}h sleep - ${deficit.toFixed(1)}h below recommended`
+                });
+            }
+            if (parseFloat(sleepQuality.longestWakeHours) > 4) {
+                alerts.push({
+                    type: 'sleep',
+                    severity: 'warning',
+                    icon: '😴',
+                    message: `Wake window of ${sleepQuality.longestWakeHours}h exceeds 4h - baby may be overtired`
+                });
+            }
+        }
+
+        return alerts;
+    }
+
+    // Update diaper health UI
+    updateDiaperHealth() {
+        const health = this.calculateDiaperHealth();
+        const container = document.getElementById('diaperHealth');
+
+        if (!container) return;
+
+        if (!health) {
+            container.innerHTML = '<p class="no-data">No diaper data yet today</p>';
+            return;
+        }
+
+        const lastChangeSubtype = health.lastChangeTime ?
+            (health.bothCount > 0 ? 'both' :
+             health.hoursSincePee === health.hoursSinceLast ? 'pee' : 'poo') : '';
+
+        const peeAlert = health.noPeeAlert ? '<span class="alert-badge">Dehydration risk</span>' : '✅';
+        const pooAlert = health.noPooAlert ? '<span class="alert-badge">Monitor</span>' : '✅';
+
+        container.innerHTML = `
+            <div class="intelligence-card">
+                <h3>💩 Diaper Health</h3>
+                <div class="intel-row">
+                    <span class="intel-label">Today:</span>
+                    <span class="intel-value">${health.totalChanges} changes (${health.peeCount} pee, ${health.pooCount} poo${health.bothCount > 0 ? `, ${health.bothCount} both` : ''})</span>
+                </div>
+                ${health.lastChangeTime ? `
+                <div class="intel-row">
+                    <span class="intel-label">Last change:</span>
+                    <span class="intel-value">${health.hoursSinceLast}h ${health.minutesSinceLast}m ago</span>
+                </div>
+                ` : ''}
+                ${health.lastPeeTime ? `
+                <div class="intel-row">
+                    <span class="intel-label">Last pee:</span>
+                    <span class="intel-value ${health.noPeeAlert ? 'alert-text' : ''}">${health.hoursSincePee}h ${health.minutesSincePee}m ago ${peeAlert}</span>
+                </div>
+                ` : ''}
+                ${health.lastPooTime ? `
+                <div class="intel-row">
+                    <span class="intel-label">Last poo:</span>
+                    <span class="intel-value ${health.noPooAlert ? 'alert-text' : ''}">${health.hoursSincePoo}h ${health.minutesSincePoo}m ago ${pooAlert}</span>
+                </div>
+                ` : ''}
+                ${health.avgPeeInterval ? `
+                <div class="intel-row">
+                    <span class="intel-label">Pee frequency:</span>
+                    <span class="intel-value">Every ${health.avgPeeInterval}h average</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // Update smart alerts UI
+    updateSmartAlerts() {
+        const alerts = this.calculateSmartAlerts();
+        const container = document.getElementById('smartAlerts');
+
+        if (!container) return;
+
+        if (!alerts || alerts.length === 0) {
+            container.innerHTML = '<p class="no-data">✅ No alerts - everything looks good!</p>';
+            return;
+        }
+
+        const alertsHtml = alerts.map(alert => {
+            const severityClass = alert.severity === 'alert' ? 'alert-critical' :
+                                 alert.severity === 'warning' ? 'alert-warning' : 'alert-info';
+            return `
+                <div class="alert-item ${severityClass}">
+                    <span class="alert-icon">${alert.icon}</span>
+                    <span class="alert-message">${alert.message}</span>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="intelligence-card alerts-card">
+                <h3>⚠️ Smart Alerts</h3>
+                <div class="alerts-list">
+                    ${alertsHtml}
+                </div>
+            </div>
+        `;
     }
 
     // Remove a single event
