@@ -568,12 +568,6 @@ class BabyTracker {
             document.getElementById('sleepCount').textContent = stats.sleep || 0;
             document.getElementById('totalMilk').textContent = stats.totalMilk || 0;
             document.getElementById('totalSleep').textContent = stats.totalSleepHours || 0;
-
-            // Update intelligent insights
-            this.updateFeedingIntelligence();
-            this.updateSleepQuality();
-            this.updateDiaperHealth();
-            this.updateSmartAlerts();
         } catch (error) {
             console.error('Error loading stats:', error);
             document.getElementById('milkCount').textContent = '0';
@@ -582,6 +576,16 @@ class BabyTracker {
             document.getElementById('sleepCount').textContent = '0';
             document.getElementById('totalMilk').textContent = '0';
             document.getElementById('totalSleep').textContent = '0';
+        } finally {
+            // Always update intelligent insights even if stats endpoint fails
+            this.updateFeedingIntelligence();
+            this.updateSleepQuality();
+            if (typeof this.updateDiaperHealth === 'function') {
+                this.updateDiaperHealth();
+            }
+            if (typeof this.updateSmartAlerts === 'function') {
+                this.updateSmartAlerts();
+            }
         }
     }
 
