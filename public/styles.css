@@ -1346,19 +1346,32 @@ button.loading::after {
     }
 
     .intel-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
         padding: 8px 0;
     }
 
     .intel-label {
         font-size: 0.85rem;
+        flex-shrink: 0;
     }
 
     .intel-value {
-        text-align: left;
+        text-align: right;
         font-size: 0.9rem;
+        flex-grow: 1;
+        overflow: hidden;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+
+    .intel-value .alert-badge,
+    .intel-value .percentage-badge {
+        margin-left: 6px;
+        font-size: 0.7rem;
+        padding: 2px 6px;
     }
 
     .intel-pattern {
