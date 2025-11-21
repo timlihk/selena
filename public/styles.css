@@ -1135,6 +1135,14 @@ button.loading::after {
    MOBILE RESPONSIVENESS
    ======================================== */
 @media (max-width: 480px) {
+    .container {
+        padding: 12px;
+    }
+
+    .tracker-section, .events-section, .stats-section, .intelligence-section {
+        padding: 15px;
+    }
+
     .form-group-inline {
         flex-direction: column;
         align-items: stretch;
@@ -1150,7 +1158,16 @@ button.loading::after {
     .form-group-inline select,
     .form-group-inline input {
         width: 100%;
+        max-width: 100%;
         flex: none;
+        box-sizing: border-box;
+    }
+
+    /* Specific fix for datetime-local input overflow */
+    input[type="datetime-local"] {
+        max-width: 100%;
+        min-width: 0;
+        width: 100%;
     }
 
     #eventType {
