@@ -596,6 +596,73 @@ body.light-mode {
     line-height: 1.4;
 }
 
+/* Adaptive Parenting Coach */
+.coach-insights {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.insights-card.coach-insight {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(102, 126, 234, 0.1) 100%);
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    position: relative;
+}
+
+.insights-card.coach-insight.insufficient_data {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(245, 158, 11, 0.1) 100%);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.insight-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.insight-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.confidence {
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.insight-description {
+    color: var(--text-primary);
+    margin: 8px 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.insight-recommendation {
+    color: var(--accent-primary);
+    font-weight: 600;
+    margin: 8px 0 0 0;
+    font-size: 0.9rem;
+    padding: 8px;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent-primary);
+}
+
+.insight-data {
+    color: var(--text-muted);
+    margin: 8px 0 0 0;
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
 /* Filter Controls */
 .filter-controls {
     background: var(--bg-secondary);

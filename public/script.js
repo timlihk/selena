@@ -586,6 +586,7 @@ class BabyTracker {
             if (typeof this.updateSmartAlerts === 'function') {
                 this.updateSmartAlerts();
             }
+            this.updateAdaptiveCoach();
         }
     }
 
@@ -1002,6 +1003,47 @@ class BabyTracker {
                     <span class="intel-value intel-pattern">${quality.wakeWindows.join('h, ')}h ${wakeAlert}</span>
                 </div>
                 ` : ''}
+            </div>
+        `;
+    }
+
+    // Update Adaptive Coach insights
+    updateAdaptiveCoach() {
+        const container = document.getElementById('adaptiveCoach');
+        if (!container) return;
+
+        // Create analyzer and generate insights
+        const analyzer = new PatternAnalyzer(this.events || [], this.homeTimezone);
+        const insights = analyzer.generateInsights();
+
+        if (!insights || insights.length === 0) {
+            container.innerHTML = '<p class="no-data">No insights yet - keep tracking!</p>';
+            return;
+        }
+
+        // Render insights
+        const insightsHtml = insights.slice(0, 3).map(insight => {
+            const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
+                                   insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
+            return `
+                <div class="insights-card coach-insight ${insight.type}">
+                    <div class="insight-header">
+                        <h4>${insight.title}</h4>
+                        ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
+                    </div>
+                    <p class="insight-description">${insight.description}</p>
+                    ${insight.recommendation ? `<p class="insight-recommendation">💡 ${insight.recommendation}</p>` : ''}
+                    ${insight.dataPoints > 0 ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="intelligence-card">
+                <h3>🎯 Adaptive Parenting Coach</h3>
+                <div class="coach-insights">
+                    ${insightsHtml}
+                </div>
             </div>
         `;
     }
