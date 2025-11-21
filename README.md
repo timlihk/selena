@@ -6,6 +6,7 @@ A full-stack web application for tracking newborn baby activities including milk
 
 ## ✨ Features
 
+### Core Tracking
 - **📊 Event Tracking**: Record milk feeds (with ml amount), diaper changes (pee/poo/both), bath times, and guided sleep sessions
 - **📈 Real-time Statistics**: View today's summary with event counts and total milk consumption
 - **⏰ 24-Hour Timeline**: Visual timeline showing all events positioned at their actual times across the day
@@ -19,6 +20,23 @@ A full-stack web application for tracking newborn baby activities including milk
 - **🎨 Beautiful UI**: Clean, modern interface with smooth animations and loading states
 - **🔒 Security**: HTTPS, input validation, and secure database connections
 - **⚡ Performance**: Optimized database queries and efficient rendering
+
+### 🤖 Adaptive Parenting Coach (NEW!)
+**AI-powered pattern recognition that learns from YOUR baby's behavior**
+
+- **🎯 Pattern Analysis**: Analyzes 14+ days of data to discover correlations between feeding times and sleep duration
+- **💡 Personalized Recommendations**: Not generic advice—real insights from your baby's actual patterns
+- **📊 Wake Window Optimization**: Finds the ideal time between naps for maximum sleep quality
+- **🎬 Feeding-to-Sleep Correlation**: Identifies optimal feeding times that lead to longer, better sleep
+- **📈 Confidence Scoring**: Each insight includes a confidence percentage based on data quantity
+- **🔍 Data Transparency**: Shows how many data points support each recommendation
+
+**Example Insights:**
+> *"Based on 12 feeding sessions, feeding around 7:00 PM leads to 23 minutes longer sleep on average."*
+> 💡 *Recommendation: "Try feeding around 7:00 PM for better sleep sessions."*
+
+> *"90-minute wake windows lead to 18 minutes longer sleep on average."*
+> 💡 *Recommendation: "Try keeping baby awake for ~90 minutes between naps."*
 
 ## 🚀 Quick Start
 
@@ -214,6 +232,15 @@ See [API.md](API.md) for complete API documentation.
 - API communication via Fetch API
 - Dynamic UI updates
 
+#### Pattern Analyzer (`public/pattern_analyzer.js`) NEW!
+- `PatternAnalyzer` class analyzes baby behavior patterns from historical data
+- **Feeding-to-Sleep Correlation**: Identifies optimal feeding times for longer sleep
+- **Wake Window Optimization**: Finds ideal time between naps for maximum sleep quality
+- **Confidence Scoring**: Generates 0-100% confidence scores based on data quantity
+- **Minimum Data Requirement**: Requires 14+ days of tracking before providing insights
+- **Real-time Analysis**: Automatically recalculates patterns when new events are added
+- **Extensible Design**: Easy to add new analysis types (bedtime consistency, growth spurts, location correlation)
+
 #### Backend (`server.js`)
 - Express.js server with middleware
 - RESTful API endpoints
@@ -245,6 +272,10 @@ See [API.md](API.md) for complete API documentation.
 - [ ] Test on mobile devices
 - [ ] Check error handling
 - [ ] Verify data persistence
+- [ ] **Adaptive Parenting Coach**: Test with < 14 days (shows "Keep Logging!")
+- [ ] **Adaptive Parenting Coach**: Test with 14+ days (shows personalized insights)
+- [ ] **Feeding-to-Sleep**: Add multiple feeding sessions at different times and verify sleep duration correlation
+- [ ] **Wake Windows**: Track naps with different wake windows and verify optimal window recommendation
 
 ### API Testing
 
@@ -255,6 +286,21 @@ curl https://selena.mangrove-hk.org/health
 # Test events endpoint
 curl https://selena.mangrove-hk.org/api/events
 ```
+
+### Pattern Analyzer Testing
+
+**Test Data Generation:**
+```javascript
+// Simulate 2+ weeks of data for pattern analysis
+// Add milk feeds at consistent times (e.g., 7:00 PM) followed by sleep
+// Add sleep sessions with varying wake windows (1-3 hours)
+// Verify insights appear after 14+ days of data
+```
+
+**Expected Insights:**
+- Feeding-to-sleep correlation when feeding events are within 4 hours before sleep
+- Wake window optimization when wake windows vary between 1-3 hours
+- Confidence scores should increase with more data points (max 90%)
 
 ## 🔒 Security Features
 

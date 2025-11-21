@@ -211,6 +211,113 @@ The timeline renders a horizontal 24-hour visualization (00:00 to 24:00) with:
   - Tablet (≤768px): 56px icon column, 16px right margin
   - Mobile (≤480px): 48px icon column, 12px right margin
 
+### Pattern Analyzer Architecture (`public/pattern_analyzer.js`) NEW!
+
+**NEW FEATURE: Adaptive Parenting Coach**
+
+The PatternAnalyzer provides AI-powered pattern recognition that learns from your baby's actual behavior patterns (not generic advice).
+
+#### PatternAnalyzer Class
+
+```javascript
+class PatternAnalyzer {
+  constructor(events, timezone) {
+    this.events = events;
+    this.timezone = timezone;
+    this.minDataDays = 14; // Minimum threshold for reliable insights
+  }
+
+  // Core analysis methods
+  analyzeFeedingToSleep()      // Feeding → Sleep correlation
+  analyzeWakeWindows()         // Wake window → Sleep duration
+
+  // Utility methods
+  hasSufficientData()          // Check if 14+ days of data
+  getDaysOfData()              // Calculate data range
+  generateInsights()           // Generate all actionable insights
+}
+```
+
+#### How It Works
+
+**Feeding-to-Sleep Analysis:**
+1. Identifies feeding events within 4 hours of sleep
+2. Groups by feeding hour (e.g., 19:00)
+3. Calculates average following sleep duration
+4. Suggests optimal feeding window when improvement > 15 minutes
+
+**Wake Window Analysis:**
+1. Tracks gaps between sleep sessions
+2. Analyzes in 30-minute buckets (1-6 hour range)
+3. Finds window with longest following sleep
+4. Recommends optimal wake duration
+
+**Confidence Algorithm:**
+```javascript
+confidence = Math.min(dataPoints / 10, maxConfidence)
+// More data points = higher confidence (capped at 85-90%)
+// Minimum 14 days required before showing insights
+```
+
+**Example Output:**
+```javascript
+{
+  type: 'feeding_to_sleep',
+  title: 'Optimal Feeding Window Found',
+  description: 'Based on 12 feeding sessions, feeding around 7:00 PM leads to 23 minutes longer sleep.',
+  recommendation: 'Try feeding around 7:00 PM for better sleep sessions.',
+  confidence: 0.90,  // 90% confidence
+  dataPoints: 12
+}
+```
+
+#### Integration Points
+
+- **Initialization**: Created in `BabyTracker.updateAdaptiveCoach()` (line 1011)
+- **Trigger**: Called automatically after every `updateStats()` (line 589)
+- **Display**: Renders in new Adaptive Coach panel in Smart Insights
+- **Real-time**: Recalculates whenever events change
+
+#### Extending the Analyzer
+
+**Adding New Analysis Type:**
+
+```javascript
+// 1. Add analysis method to PatternAnalyzer class
+analyzeBedtimeConsistency() {
+  const insights = [];
+  // ... analysis logic for bedtime consistency
+  return insights;
+}
+
+// 2. Add to main generator
+class PatternAnalyzer {
+  generateInsights() {
+    const insights = [];
+    insights.push(...this.analyzeFeedingToSleep());
+    insights.push(...this.analyzeWakeWindows());
+    insights.push(...this.analyzeBedtimeConsistency()); // NEW
+    return insights;
+  }
+}
+
+// 3. Update BabyTracker to handle new insight type
+updateAdaptiveCoach() {
+  const analyzer = new PatternAnalyzer(this.events, this.homeTimezone);
+  const insights = analyzer.generateInsights();
+  // ... render logic includes new type
+}
+```
+
+**Future Extension Ideas:**
+- Bedtime consistency → Sleep duration
+- Napping location → Sleep quality
+- Feeding amount → Sleep duration
+- Growth spurt detection (feeding increases)
+- Teething pattern recognition (sleep disruption + mood changes)
+- Seasonal/weather correlations
+- Caregiver effect on baby behavior
+
 ### Backend Architecture (`server.js`)
 
 #### Express Server Setup
