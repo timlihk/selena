@@ -652,11 +652,12 @@ class BabyTracker {
         const totalSleepMinutes = sleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
         const totalSleepHours = totalSleepMinutes / 60;
 
-        // Calculate last 3 days total sleep
-        const last3DaysEvents = this.getEventsFromLastNDays(3);
-        const last3DaysSleepEvents = last3DaysEvents.filter(e => e.type === 'sleep');
-        const last3DaysTotalMinutes = last3DaysSleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
-        const last3DaysTotalHours = last3DaysTotalMinutes / 60;
+        // Calculate last 3 days sleep breakdown by day
+        const last3DaysBreakdown = this.getLast3DaysSleepBreakdown();
+
+        // Calculate total for last 3 days
+        const last3DaysTotalHours = last3DaysBreakdown.reduce((sum, day) => sum + day.hours, 0);
+        const last3DaysSessionCount = last3DaysBreakdown.reduce((sum, day) => sum + day.sessionCount, 0);
 
         // Find longest sleep stretch
         const longestSleep = Math.max(...sleepEvents.map(e => e.amount || 0));
@@ -716,7 +717,8 @@ class BabyTracker {
             sleepPercentage: Math.round(sleepPercentage),
             isUnderslept: sleepPercentage < 85,
             last3DaysTotalHours: last3DaysTotalHours.toFixed(1),
-            last3DaysSessionCount: last3DaysSleepEvents.length
+            last3DaysSessionCount: last3DaysSessionCount,
+            last3DaysBreakdown: last3DaysBreakdown
         };
     }
 
@@ -730,6 +732,66 @@ class BabyTracker {
             const eventDate = new Date(event.timestamp);
             return eventDate >= cutoffDate && eventDate <= now;
         });
+    }
+
+    // Get sleep breakdown for the last 3 days
+    getLast3DaysSleepBreakdown() {
+        const breakdown = [];
+
+        for (let i = 0; i < 3; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+
+            // Get start and end of this day in home timezone
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: this.homeTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+
+            const parts = formatter.formatToParts(date);
+            const year = parseInt(parts.find(p => p.type === 'year').value);
+            const month = parseInt(parts.find(p => p.type === 'month').value);
+            const day = parseInt(parts.find(p => p.type === 'day').value);
+
+            // Create start and end of day
+            const startStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T00:00:00`;
+            const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
+
+            const dayStart = this.parseInTimezone(startStr, this.homeTimezone);
+            const dayEnd = this.parseInTimezone(endStr, this.homeTimezone);
+
+            // Get sleep events for this day
+            const daySleepEvents = this.allEvents.filter(event => {
+                if (event.type !== 'sleep') return false;
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= dayStart && eventDate <= dayEnd;
+            });
+
+            // Calculate total sleep for this day
+            const totalMinutes = daySleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+            const totalHours = totalMinutes / 60;
+
+            // Create label
+            let label;
+            if (i === 0) {
+                label = 'Today';
+            } else if (i === 1) {
+                label = 'Yesterday';
+            } else {
+                label = `${month}/${day}`;
+            }
+
+            breakdown.push({
+                label,
+                hours: totalHours,
+                sessionCount: daySleepEvents.length,
+                date: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+            });
+        }
+
+        return breakdown;
     }
 
     // Get today's events in home timezone
@@ -900,6 +962,17 @@ class BabyTracker {
             ? '<span class="alert-badge">Long wake window</span>'
             : '';
 
+        // Build daily breakdown display
+        let breakdownHtml = '';
+        if (quality.last3DaysBreakdown && quality.last3DaysBreakdown.length > 0) {
+            breakdownHtml = quality.last3DaysBreakdown.map(day => {
+                return `<div class="intel-row">
+                    <span class="intel-label">${day.label}:</span>
+                    <span class="intel-value">${day.hours.toFixed(1)}h (${day.sessionCount} sessions)</span>
+                </div>`;
+            }).join('');
+        }
+
         container.innerHTML = `
             <div class="intelligence-card">
                 <h3>😴 Sleep Quality</h3>
@@ -909,9 +982,10 @@ class BabyTracker {
                     <span class="percentage-badge ${percentageClass}">${quality.sleepPercentage}%</span>
                 </div>
                 <div class="intel-row">
-                    <span class="intel-label">Last 3 days total:</span>
-                    <span class="intel-value">${quality.last3DaysTotalHours}h (${quality.last3DaysSessionCount} sessions)</span>
+                    <span class="intel-label">Last 3 days:</span>
+                    <span class="intel-value">${quality.last3DaysTotalHours}h total (${quality.last3DaysSessionCount} sessions)</span>
                 </div>
+                ${breakdownHtml}
                 <div class="intel-row">
                     <span class="intel-label">Longest stretch:</span>
                     <span class="intel-value">${quality.longestStretchHours}h (${this.formatMinutes(quality.longestStretchMinutes)})</span>
