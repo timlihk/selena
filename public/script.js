@@ -962,15 +962,17 @@ class BabyTracker {
             ? '<span class="alert-badge">Long wake window</span>'
             : '';
 
-        // Build daily breakdown display
+        // Build daily breakdown display (excluding today to avoid duplication)
         let breakdownHtml = '';
         if (quality.last3DaysBreakdown && quality.last3DaysBreakdown.length > 0) {
-            breakdownHtml = quality.last3DaysBreakdown.map(day => {
-                return `<div class="intel-row">
-                    <span class="intel-label">${day.label}:</span>
-                    <span class="intel-value">${day.hours.toFixed(1)}h (${day.sessionCount} sessions)</span>
-                </div>`;
-            }).join('');
+            breakdownHtml = quality.last3DaysBreakdown
+                .filter(day => day.label !== 'Today') // Exclude today as it's shown in "Total today"
+                .map(day => {
+                    return `<div class="intel-row">
+                        <span class="intel-label">${day.label}:</span>
+                        <span class="intel-value">${day.hours.toFixed(1)}h (${day.sessionCount} sessions)</span>
+                    </div>`;
+                }).join('');
         }
 
         container.innerHTML = `
@@ -980,10 +982,6 @@ class BabyTracker {
                     <span class="intel-label">Total today:</span>
                     <span class="intel-value">${quality.totalHours}h (${quality.sleepPercentage}% of ${quality.recommendedHours}h)</span>
                     <span class="percentage-badge ${percentageClass}">${quality.sleepPercentage}%</span>
-                </div>
-                <div class="intel-row">
-                    <span class="intel-label">Last 3 days:</span>
-                    <span class="intel-value">${quality.last3DaysTotalHours}h total (${quality.last3DaysSessionCount} sessions)</span>
                 </div>
                 ${breakdownHtml}
                 <div class="intel-row">
