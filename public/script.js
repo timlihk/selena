@@ -652,6 +652,12 @@ class BabyTracker {
         const totalSleepMinutes = sleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
         const totalSleepHours = totalSleepMinutes / 60;
 
+        // Calculate last 3 days total sleep
+        const last3DaysEvents = this.getEventsFromLastNDays(3);
+        const last3DaysSleepEvents = last3DaysEvents.filter(e => e.type === 'sleep');
+        const last3DaysTotalMinutes = last3DaysSleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+        const last3DaysTotalHours = last3DaysTotalMinutes / 60;
+
         // Find longest sleep stretch
         const longestSleep = Math.max(...sleepEvents.map(e => e.amount || 0));
         const longestSleepEvent = sleepEvents.find(e => e.amount === longestSleep);
@@ -708,8 +714,22 @@ class BabyTracker {
             longestWakeHours: longestWake.toFixed(1),
             recommendedHours,
             sleepPercentage: Math.round(sleepPercentage),
-            isUnderslept: sleepPercentage < 85
+            isUnderslept: sleepPercentage < 85,
+            last3DaysTotalHours: last3DaysTotalHours.toFixed(1),
+            last3DaysSessionCount: last3DaysSleepEvents.length
         };
+    }
+
+    // Helper method to get events from last N days
+    getEventsFromLastNDays(days) {
+        const now = new Date();
+        const cutoffDate = new Date(now);
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+
+        return this.allEvents.filter(event => {
+            const eventDate = new Date(event.timestamp);
+            return eventDate >= cutoffDate && eventDate <= now;
+        });
     }
 
     // Get today's events in home timezone
@@ -887,6 +907,10 @@ class BabyTracker {
                     <span class="intel-label">Total today:</span>
                     <span class="intel-value">${quality.totalHours}h (${quality.sleepPercentage}% of ${quality.recommendedHours}h)</span>
                     <span class="percentage-badge ${percentageClass}">${quality.sleepPercentage}%</span>
+                </div>
+                <div class="intel-row">
+                    <span class="intel-label">Last 3 days total:</span>
+                    <span class="intel-value">${quality.last3DaysTotalHours}h (${quality.last3DaysSessionCount} sessions)</span>
                 </div>
                 <div class="intel-row">
                     <span class="intel-label">Longest stretch:</span>
