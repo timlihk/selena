@@ -1101,6 +1101,14 @@ button.loading::after {
     font-size: 1rem;
 }
 
+    /* Fix datetime-local overflow on tablet-sized screens */
+    input[type="datetime-local"] {
+        max-width: 100%;
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
 @media (max-width: 768px) {
     .timeline-hours {
         margin: 0 16px 12px 56px;
@@ -1168,6 +1176,7 @@ button.loading::after {
         max-width: 100%;
         min-width: 0;
         width: 100%;
+        box-sizing: border-box;
     }
 
     #eventType {
