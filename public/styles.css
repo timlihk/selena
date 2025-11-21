@@ -166,6 +166,16 @@ header p {
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+/* Global fix for datetime-local to prevent overflow on all devices */
+input[type="datetime-local"] {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
 @media (prefers-color-scheme: dark) {
     input::placeholder {
         color: var(--text-muted);
@@ -1101,14 +1111,6 @@ button.loading::after {
     font-size: 1rem;
 }
 
-    /* Fix datetime-local overflow on tablet-sized screens */
-    input[type="datetime-local"] {
-        max-width: 100%;
-        min-width: 0;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
 @media (max-width: 768px) {
     .timeline-hours {
         margin: 0 16px 12px 56px;
@@ -1165,17 +1167,32 @@ button.loading::after {
 
     .form-group-inline select,
     .form-group-inline input {
-        width: 100%;
-        max-width: 100%;
-        flex: none;
-        box-sizing: border-box;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+        box-sizing: border-box !important;
+        padding: 8px 10px !important;
     }
 
     /* Specific fix for datetime-local input overflow */
     input[type="datetime-local"] {
-        max-width: 100%;
-        min-width: 0;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        -webkit-appearance: none;
+        appearance: none;
+        font-size: 16px !important;
+        padding: 8px 10px !important;
+    }
+
+    /* Ensure parent containers don't overflow */
+    .form-group,
+    .tracker-section {
+        overflow: hidden;
         width: 100%;
+        max-width: 100%;
         box-sizing: border-box;
     }
 
