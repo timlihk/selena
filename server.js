@@ -3,9 +3,59 @@ const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { initializeDatabase, Event } = require('./database');
+const { initializeDatabase, Event, withTransaction } = require('./database');
 
 // Input validation constants
+// Enhanced validation functions
+function validateEventType(type) {
+  const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
+  if (!ALLOWED_EVENT_TYPES.includes(type)) {
+    throw new Error(`Invalid event type: ${type}. Must be one of: ${ALLOWED_EVENT_TYPES.join(', ')}`);
+  }
+}
+
+function validateUserName(userName) {
+  const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
+  if (!ALLOWED_USERS.includes(userName)) {
+    throw new Error(`Invalid user: ${userName}. Must be one of: ${ALLOWED_USERS.join(', ')}`);
+  }
+}
+
+function validateDiaperSubtype(subtype) {
+  const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
+  if (subtype && !ALLOWED_DIAPER_SUBTYPES.includes(subtype)) {
+    throw new Error(`Invalid diaper subtype: ${subtype}. Must be one of: ${ALLOWED_DIAPER_SUBTYPES.join(', ')}`);
+  }
+}
+
+function validateMilkAmount(amount) {
+  const MAX_MILK_AMOUNT = 500;
+  if (amount <= 0 || amount > MAX_MILK_AMOUNT) {
+    throw new Error(`Milk amount must be between 1 and ${MAX_MILK_AMOUNT} ml`);
+  }
+}
+
+function validateSleepDuration(duration) {
+  const MAX_SLEEP_DURATION = 480;
+  if (duration <= 0 || duration > MAX_SLEEP_DURATION) {
+    throw new Error(`Sleep duration must be between 1 and ${MAX_SLEEP_DURATION} minutes`);
+  }
+}
+
+function validateTimestamp(timestamp) {
+  const TIMESTAMP_MAX_PAST_DAYS = 365;
+  const maxPastDate = new Date();
+  maxPastDate.setDate(maxPastDate.getDate() - TIMESTAMP_MAX_PAST_DAYS);
+
+  const eventDate = new Date(timestamp);
+  if (eventDate > new Date()) {
+    throw new Error('Event timestamp cannot be in the future');
+  }
+  if (eventDate < maxPastDate) {
+    throw new Error(`Event timestamp cannot be more than ${TIMESTAMP_MAX_PAST_DAYS} days in the past`);
+  }
+}
+
 const CONSTANTS = {
   ALLOWED_EVENT_TYPES: ['milk', 'poo', 'diaper', 'bath', 'sleep'],
   ALLOWED_DIAPER_SUBTYPES: ['pee', 'poo', 'both'],
@@ -121,46 +171,42 @@ app.post('/api/events', async (req, res) => {
     console.log('Received event creation request:', req.body);
     const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, diaperSubtype, timestamp } = req.body;
 
-    if (!type) {
-      return res.status(400).json({ error: 'Event type is required' });
-    }
+    // Enhanced validation using validation functions
+    try {
+      if (!type) throw new Error('Event type is required');
+      validateEventType(type);
 
-    if (!CONSTANTS.ALLOWED_EVENT_TYPES.includes(type)) {
-      return res.status(400).json({
-        error: `Invalid event type. Allowed types: ${CONSTANTS.ALLOWED_EVENT_TYPES.join(', ')}`
-      });
-    }
+      if (!userName) throw new Error('User name is required');
+      validateUserName(userName);
 
-    if (!userName) {
-      return res.status(400).json({ error: 'User name is required' });
-    }
+      if (timestamp) {
+        validateTimestamp(timestamp);
+      }
 
-    if (!CONSTANTS.ALLOWED_USERS.includes(userName)) {
-      return res.status(400).json({
-        error: `Invalid user. Allowed users: ${CONSTANTS.ALLOWED_USERS.join(', ')}`
-      });
+      if (type === 'diaper' && diaperSubtype) {
+        validateDiaperSubtype(diaperSubtype);
+      }
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
     }
 
     // Validate timestamp if provided
     let eventTimestamp = null;
     if (timestamp) {
       const parsedTimestamp = new Date(timestamp);
-      if (isNaN(parsedTimestamp.getTime())) {
-        return res.status(400).json({ error: 'Invalid timestamp format' });
-      }
-      // Prevent future timestamps
-      if (parsedTimestamp > new Date()) {
-        return res.status(400).json({ error: 'Timestamp cannot be in the future' });
-      }
       eventTimestamp = parsedTimestamp.toISOString();
     }
 
     if (type === 'milk') {
       const parsedAmount = parseInt(amount, 10);
-      if (Number.isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > CONSTANTS.VALIDATION.MAX_MILK_AMOUNT) {
-        return res.status(400).json({
-          error: `Milk amount must be between 1 and ${CONSTANTS.VALIDATION.MAX_MILK_AMOUNT} ml`
-        });
+      if (Number.isNaN(parsedAmount)) {
+        return res.status(400).json({ error: 'Milk amount must be a valid number' });
+      }
+
+      try {
+        validateMilkAmount(parsedAmount);
+      } catch (validationError) {
+        return res.status(400).json({ error: validationError.message });
       }
     }
 
@@ -187,19 +233,77 @@ app.post('/api/events', async (req, res) => {
       } else if (sleepSubType === 'wake_up') {
         sleepEnd = eventTimestamp || new Date().toISOString();
 
-        // Find the most recent fall asleep event for this user (optimized query)
-        const lastFallAsleep = await Event.getLastIncompleteSleep(userName);
+        // Complete sleep session within a transaction to prevent race conditions
+        try {
+          const result = await withTransaction(async (client) => {
+            const lastFallAsleep = await Event.getLastIncompleteSleepForUpdate(
+              userName,
+              client
+            );
 
-        if (lastFallAsleep) {
-          sleepStart = lastFallAsleep.sleep_start_time;
-          const duration = Math.round((new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)); // minutes
-          calculatedAmount = duration > 0 ? duration : 1;
+            if (!lastFallAsleep) {
+              return { success: false, error: 'No fall asleep event found' };
+            }
 
-          // Update the fall asleep event with end time and duration
-          await Event.update(lastFallAsleep.id, 'sleep', calculatedAmount, sleepStart, sleepEnd);
-          return res.status(201).json({ ...lastFallAsleep, amount: calculatedAmount, sleep_end_time: sleepEnd });
-        } else {
-          return res.status(400).json({ error: 'No fall asleep event found to complete sleep session' });
+            sleepStart = lastFallAsleep.sleep_start_time;
+            const duration = Math.round(
+              (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
+            );
+            calculatedAmount = duration > 0 ? duration : 1;
+
+            // Update within the transaction
+            const updateResult = await client.query(
+              `UPDATE baby_events
+               SET amount = $1, sleep_end_time = $2
+               WHERE id = $3
+               RETURNING *`,
+              [calculatedAmount, sleepEnd, lastFallAsleep.id]
+            );
+
+            return {
+              success: true,
+              event: updateResult.rows[0],
+              original: lastFallAsleep
+            };
+          });
+
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+
+          // Return the completed sleep event
+          return res.status(201).json({
+            ...result.original,
+            amount: calculatedAmount,
+            sleep_end_time: sleepEnd,
+            ...result.event
+          });
+        } catch (error) {
+          console.error('Failed to complete wake-up:', error);
+
+          // Handle specific error types with appropriate status codes
+          if (error.name === 'ConcurrentUpdateError') {
+            return res.status(409).json({
+              error: 'Sleep session was already completed by another request',
+              code: 'CONCURRENT_UPDATE'
+            });
+          } else if (error.name === 'TransactionError') {
+            return res.status(500).json({
+              error: 'Transaction failed, please try again',
+              code: 'TRANSACTION_ERROR'
+            });
+          } else if (error.name === 'DatabaseError') {
+            return res.status(500).json({
+              error: 'Database error occurred',
+              code: 'DATABASE_ERROR'
+            });
+          }
+
+          // Generic error
+          return res.status(500).json({
+            error: 'Failed to complete sleep session',
+            code: 'INTERNAL_ERROR'
+          });
         }
       } else {
         // Legacy sleep event with manual duration
@@ -219,18 +323,44 @@ app.post('/api/events', async (req, res) => {
         });
       }
 
-      // Check if there's an incomplete sleep event for this user
-      // If so, automatically complete it with the current time as wake up time
-      const incompleteSleep = await Event.getLastIncompleteSleep(userName);
-      if (incompleteSleep) {
-        const sleepEnd = eventTimestamp || new Date().toISOString();
-        const sleepStart = incompleteSleep.sleep_start_time;
-        const duration = Math.round((new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)); // minutes
-        const sleepAmount = duration > 0 ? duration : 1;
+      // Check for incomplete sleep WITHIN a transaction to prevent race conditions
+      if (type !== 'sleep') {
+        try {
+          await withTransaction(async (client) => {
+            const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(
+              userName,
+              client
+            );
 
-        // Update the incomplete sleep event with end time and duration
-        await Event.update(incompleteSleep.id, 'sleep', sleepAmount, sleepStart, sleepEnd);
-        console.log(`Auto-completed sleep event ${incompleteSleep.id} with ${type} event at ${sleepEnd}`);
+            if (incompleteSleep) {
+              const sleepEnd = eventTimestamp || new Date().toISOString();
+              const sleepStart = incompleteSleep.sleep_start_time;
+              const duration = Math.round(
+                (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
+              );
+              const sleepAmount = duration > 0 ? duration : 1;
+
+              // Update within the transaction
+              await client.query(
+                `UPDATE baby_events
+                 SET amount = $1, sleep_end_time = $2
+                 WHERE id = $3`,
+                [sleepAmount, sleepEnd, incompleteSleep.id]
+              );
+
+              console.log(
+                `Auto-completed sleep event ${incompleteSleep.id} ` +
+                `with ${type} event at ${sleepEnd}`
+              );
+            }
+          });
+        } catch (error) {
+          // If transaction fails (e.g., concurrent update), log but don't fail the request
+          console.error(
+            'Failed to auto-complete sleep (concurrent update):',
+            error.message
+          );
+        }
       }
     }
 

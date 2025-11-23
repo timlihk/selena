@@ -1,6 +1,29 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Custom error classes
+class DatabaseError extends Error {
+  constructor(message, originalError = null) {
+    super(message);
+    this.name = 'DatabaseError';
+    this.originalError = originalError;
+  }
+}
+
+class TransactionError extends DatabaseError {
+  constructor(message, originalError = null) {
+    super(message, originalError);
+    this.name = 'TransactionError';
+  }
+}
+
+class ConcurrentUpdateError extends DatabaseError {
+  constructor(message = 'Concurrent update detected') {
+    super(message);
+    this.name = 'ConcurrentUpdateError';
+  }
+}
+
 // Timezone configuration
 const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
 const HISTORICAL_DATA_TIMEZONE = process.env.DB_STORAGE_TIMEZONE || 'UTC';
@@ -147,6 +170,88 @@ async function testConnection() {
   }
 }
 
+// Execute callback within a database transaction
+async function withTransaction(callback) {
+  if (useMemoryStore) {
+    // Enhanced memory store transaction simulation
+    let transactionState = 'active';
+    const transactionClient = {
+      query: async (text, params = []) => {
+        const normalizedText = text.trim().toUpperCase();
+
+        // Handle transaction control statements
+        if (normalizedText === 'BEGIN') {
+          transactionState = 'active';
+          return { rows: [] };
+        } else if (normalizedText === 'COMMIT') {
+          transactionState = 'committed';
+          return { rows: [] };
+        } else if (normalizedText === 'ROLLBACK') {
+          transactionState = 'rolled_back';
+          return { rows: [] };
+        }
+
+        // Only allow queries when transaction is active
+        if (transactionState !== 'active') {
+          throw new Error(`Transaction is ${transactionState}, cannot execute query`);
+        }
+
+        // Execute the actual query using the regular pool or memory store
+        if (pool) {
+          return pool.query(text, params);
+        } else {
+          // For memory store without pool, simulate query execution
+          if (text.trim().toUpperCase().startsWith('SELECT')) {
+            return { rows: [{ test: 1 }] };
+          }
+          return { rows: [] };
+        }
+      }
+    };
+
+    try {
+      await transactionClient.query('BEGIN');
+      const result = await callback(transactionClient);
+      await transactionClient.query('COMMIT');
+      return result;
+    } catch (error) {
+      if (transactionState === 'active') {
+        await transactionClient.query('ROLLBACK');
+      }
+      throw error;
+    }
+  }
+
+  ensureDatabaseConnected();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Failed to rollback transaction:', rollbackError);
+    }
+
+    // Wrap database errors with custom error types
+    if (error.code === '23505') { // unique_violation
+      throw new ConcurrentUpdateError('Concurrent update conflict detected', error);
+    } else if (error.code && error.code.startsWith('23')) { // constraint violation
+      throw new DatabaseError('Database constraint violation', error);
+    } else if (error.code && error.code.startsWith('40')) { // transaction errors
+      throw new TransactionError('Transaction failed', error);
+    }
+
+    throw new DatabaseError('Database operation failed', error);
+  } finally {
+    client.release();
+  }
+}
+
 // Initialize database tables
 async function initializeDatabase() {
   try {
@@ -250,6 +355,18 @@ async function initializeDatabase() {
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_baby_events_type
         ON baby_events (type, timestamp DESC)
+      `);
+
+      // Add indexes for sleep concurrency queries
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_baby_events_sleep_incomplete
+        ON baby_events (user_name, type, sleep_start_time, sleep_end_time)
+        WHERE type = 'sleep' AND sleep_start_time IS NOT NULL AND sleep_end_time IS NULL
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_baby_events_user_type
+        ON baby_events (user_name, type, timestamp DESC)
       `);
 
       console.log('✅ Database initialized successfully');
@@ -549,6 +666,36 @@ const Event = {
     }
   },
 
+  // Get the last incomplete sleep WITH ROW LOCKING for transaction safety
+  async getLastIncompleteSleepForUpdate(userName, client = null) {
+    try {
+      if (useMemoryStore) {
+        // Memory store doesn't support locking
+        return this.getLastIncompleteSleep(userName);
+      }
+
+      ensureDatabaseConnected();
+      const queryClient = client || pool;
+
+      const result = await queryClient.query(
+        `SELECT * FROM baby_events
+         WHERE type = 'sleep'
+           AND user_name = $1
+           AND sleep_start_time IS NOT NULL
+           AND sleep_end_time IS NULL
+         ORDER BY timestamp DESC
+         LIMIT 1
+         FOR UPDATE`, // <-- Locks this row exclusively
+        [userName]
+      );
+
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('Error getting locked incomplete sleep event:', error);
+      throw error;
+    }
+  },
+
   // Delete an event
   async delete(id) {
     try {
@@ -619,5 +766,6 @@ module.exports = {
   initializeDatabase,
   Event,
   testConnection,
-  resetMemoryStore
+  resetMemoryStore,
+  withTransaction
 };
