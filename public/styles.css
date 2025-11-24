@@ -1106,6 +1106,7 @@ button.loading::after {
     background: var(--timeline-hour-bg);
     border-radius: 20px;
     margin: 0 24px;
+    padding: 0 24px;
 }
 
 .timeline-marker {
