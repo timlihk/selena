@@ -1427,7 +1427,4 @@ button.loading::after {
     border-top-color: var(--bg-secondary);
 }
 
-/* Remove section-specific styles that are no longer needed */
-.timeline-section, .timeline-section-label, .timeline-section-hours {
-    display: none; /* Hide the section containers as they are no longer used */
-}
+

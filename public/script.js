@@ -556,8 +556,6 @@ class BabyTracker {
 
     async updateAllStats() {
         await this.updateTodayStats();
-        await this.updateWeeklyStats();
-        await this.updateMonthlyStats();
     }
 
     async updateTodayStats() {
@@ -586,40 +584,6 @@ class BabyTracker {
                 this.updateSmartAlerts();
             }
             this.updateAdaptiveCoach();
-        }
-    }
-
-    async updateWeeklyStats() {
-        try {
-            const response = await fetch('/api/stats/weekly');
-            if (!response.ok) {
-                throw new Error('Failed to load weekly stats');
-            }
-            const stats = await response.json();
-
-            document.getElementById('weeklyMilkCount').textContent = stats.milk || 0;
-            document.getElementById('weeklyPooCount').textContent = stats.poo || 0;
-            document.getElementById('weeklyTotalMilk').textContent = stats.totalMilk || 0;
-            document.getElementById('weeklyTotalSleep').textContent = stats.totalSleepHours || 0;
-        } catch (error) {
-            console.error('Error loading weekly stats:', error);
-        }
-    }
-
-    async updateMonthlyStats() {
-        try {
-            const response = await fetch('/api/stats/monthly');
-            if (!response.ok) {
-                throw new Error('Failed to load monthly stats');
-            }
-            const stats = await response.json();
-
-            document.getElementById('monthlyMilkCount').textContent = stats.milk || 0;
-            document.getElementById('monthlyPooCount').textContent = stats.poo || 0;
-            document.getElementById('monthlyTotalMilk').textContent = stats.totalMilk || 0;
-            document.getElementById('monthlyTotalSleep').textContent = stats.totalSleepHours || 0;
-        } catch (error) {
-            console.error('Error loading monthly stats:', error);
         }
     }
 
