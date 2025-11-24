@@ -1992,7 +1992,7 @@ class BabyTracker {
                 return;
             }
 
-            // Create four lanes: Sleep, Milk, Diapers/Bath, and Empty for spacing
+            // Create three lanes: Sleep, Milk, Diapers/Bath
             const sleepLaneDiv = document.createElement('div');
             sleepLaneDiv.className = 'timeline-lane';
 
@@ -2025,18 +2025,6 @@ class BabyTracker {
 
             const diapersBathTrackDiv = document.createElement('div');
             diapersBathTrackDiv.className = 'timeline-lane-track';
-
-            // Empty lane for visual separation
-            const emptyLaneDiv = document.createElement('div');
-            emptyLaneDiv.className = 'timeline-lane';
-
-            const emptyLabelDiv = document.createElement('div');
-            emptyLabelDiv.className = 'timeline-lane-label';
-            emptyLabelDiv.innerHTML = '<span></span>';
-            emptyLaneDiv.appendChild(emptyLabelDiv);
-
-            const emptyTrackDiv = document.createElement('div');
-            emptyTrackDiv.className = 'timeline-lane-track';
 
             // Process events and separate into lanes
             todayEvents.forEach(event => {
@@ -2200,12 +2188,10 @@ class BabyTracker {
             sleepLaneDiv.appendChild(sleepTrackDiv);
             milkLaneDiv.appendChild(milkTrackDiv);
             diapersBathLaneDiv.appendChild(diapersBathTrackDiv);
-            emptyLaneDiv.appendChild(emptyTrackDiv);
 
             eventsContainer.appendChild(sleepLaneDiv);
             eventsContainer.appendChild(milkLaneDiv);
             eventsContainer.appendChild(diapersBathLaneDiv);
-            eventsContainer.appendChild(emptyLaneDiv);
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');
