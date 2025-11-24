@@ -550,6 +550,28 @@ body.light-mode {
 }
 
 /* Smart Alerts */
+.alerts-section {
+    background: var(--bg-secondary);
+    border-radius: 15px;
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 30px var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.alerts-section h2 {
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.alerts-container {
+    min-height: 60px;
+}
+
 .alerts-card {
     border-left: 4px solid #f59e0b;
 }

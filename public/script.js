@@ -1992,19 +1992,42 @@ class BabyTracker {
                 return;
             }
 
-            // Create unified timeline with single lane
-            const unifiedLaneDiv = document.createElement('div');
-            unifiedLaneDiv.className = 'timeline-lane';
+            // Create three lanes: Sleep, Events, and Empty for spacing
+            const sleepLaneDiv = document.createElement('div');
+            sleepLaneDiv.className = 'timeline-lane';
 
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'timeline-lane-label';
-            labelDiv.innerHTML = '<span>📊</span>';
-            unifiedLaneDiv.appendChild(labelDiv);
+            const sleepLabelDiv = document.createElement('div');
+            sleepLabelDiv.className = 'timeline-lane-label';
+            sleepLabelDiv.innerHTML = '<span>😴</span>';
+            sleepLaneDiv.appendChild(sleepLabelDiv);
 
-            const trackDiv = document.createElement('div');
-            trackDiv.className = 'timeline-lane-track';
+            const sleepTrackDiv = document.createElement('div');
+            sleepTrackDiv.className = 'timeline-lane-track';
 
-            // Process events for unified timeline
+            const eventsLaneDiv = document.createElement('div');
+            eventsLaneDiv.className = 'timeline-lane';
+
+            const eventsLabelDiv = document.createElement('div');
+            eventsLabelDiv.className = 'timeline-lane-label';
+            eventsLabelDiv.innerHTML = '<span>📊</span>';
+            eventsLaneDiv.appendChild(eventsLabelDiv);
+
+            const eventsTrackDiv = document.createElement('div');
+            eventsTrackDiv.className = 'timeline-lane-track';
+
+            // Empty lane for visual separation
+            const emptyLaneDiv = document.createElement('div');
+            emptyLaneDiv.className = 'timeline-lane';
+
+            const emptyLabelDiv = document.createElement('div');
+            emptyLabelDiv.className = 'timeline-lane-label';
+            emptyLabelDiv.innerHTML = '<span></span>';
+            emptyLaneDiv.appendChild(emptyLabelDiv);
+
+            const emptyTrackDiv = document.createElement('div');
+            emptyTrackDiv.className = 'timeline-lane-track';
+
+            // Process events and separate into lanes
             todayEvents.forEach(event => {
                 const eventDate = new Date(event.timestamp);
                 const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
@@ -2015,7 +2038,7 @@ class BabyTracker {
                 const config = this.EVENT_CONFIG[normalizedType] || {};
 
                 if (normalizedType === 'sleep' && event.sleep_start_time && event.sleep_end_time) {
-                    // Create sleep progress bar
+                    // Create sleep progress bar for sleep lane
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = new Date(event.sleep_end_time);
                     const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
@@ -2065,9 +2088,9 @@ class BabyTracker {
                         this.activeTimelineMarker = progressBar;
                     }, { passive: true });
 
-                    trackDiv.appendChild(progressBar);
-                } else {
-                    // Create marker for other event types
+                    sleepTrackDiv.appendChild(progressBar);
+                } else if (['milk', 'diaper', 'bath'].includes(normalizedType)) {
+                    // Create marker for other event types in events lane
                     const marker = document.createElement('div');
                     marker.className = 'timeline-marker timeline-icon-marker';
                     marker.style.left = `${leftPosition}%`;
@@ -2137,12 +2160,18 @@ class BabyTracker {
                         this.activeTimelineMarker = marker;
                     }, { passive: true });
 
-                    trackDiv.appendChild(marker);
+                    eventsTrackDiv.appendChild(marker);
                 }
             });
 
-            unifiedLaneDiv.appendChild(trackDiv);
-            eventsContainer.appendChild(unifiedLaneDiv);
+            // Assemble the lanes
+            sleepLaneDiv.appendChild(sleepTrackDiv);
+            eventsLaneDiv.appendChild(eventsTrackDiv);
+            emptyLaneDiv.appendChild(emptyTrackDiv);
+
+            eventsContainer.appendChild(sleepLaneDiv);
+            eventsContainer.appendChild(eventsLaneDiv);
+            eventsContainer.appendChild(emptyLaneDiv);
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');
