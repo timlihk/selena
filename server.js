@@ -560,6 +560,28 @@ app.get('/api/stats/today', async (req, res) => {
   }
 });
 
+// Get weekly stats
+app.get('/api/stats/weekly', async (req, res) => {
+  try {
+    const stats = await Event.getWeeklyStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching weekly stats:', error);
+    res.status(500).json({ error: 'Failed to fetch weekly stats' });
+  }
+});
+
+// Get monthly stats
+app.get('/api/stats/monthly', async (req, res) => {
+  try {
+    const stats = await Event.getMonthlyStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching monthly stats:', error);
+    res.status(500).json({ error: 'Failed to fetch monthly stats' });
+  }
+});
+
 // Delete an event
 app.delete('/api/events/:id', async (req, res) => {
   try {

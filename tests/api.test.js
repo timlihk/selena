@@ -124,3 +124,17 @@ describe('PUT /api/events/:id', () => {
     expect(response.body.sleep_end_time).toBe(expectedEnd);
   });
 });
+
+describe('GET /api/stats', () => {
+  it('should return 200 and an array for weekly stats', async () => {
+    const response = await request(app).get('/api/stats/weekly');
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBeInstanceOf(Array);
+  });
+
+  it('should return 200 and an array for monthly stats', async () => {
+    const response = await request(app).get('/api/stats/monthly');
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBeInstanceOf(Array);
+  });
+});

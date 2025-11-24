@@ -632,6 +632,82 @@ const Event = {
     }
   },
 
+  // Get weekly stats
+  async getWeeklyStats() {
+    try {
+      if (useMemoryStore) {
+        // This is a simplified in-memory version for testing
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const recentEvents = memoryStore.filter(e => new Date(e.timestamp) > sevenDaysAgo);
+        return recentEvents;
+      }
+
+      ensureDatabaseConnected();
+      const result = await pool.query(`
+        WITH date_series AS (
+          SELECT generate_series(
+            (NOW() - interval '6 days')::date,
+            NOW()::date,
+            '1 day'::interval
+          )::date AS day
+        )
+        SELECT
+          d.day,
+          COALESCE(SUM(CASE WHEN e.type = 'milk' THEN e.amount ELSE 0 END), 0) as total_milk,
+          COALESCE(SUM(CASE WHEN e.type = 'sleep' THEN e.amount ELSE 0 END), 0) as total_sleep_minutes,
+          COUNT(CASE WHEN e.type = 'diaper' OR e.type = 'poo' THEN 1 END) as diaper_count
+        FROM date_series d
+        LEFT JOIN baby_events e ON DATE(e.timestamp AT TIME ZONE $1) = d.day
+        GROUP BY d.day
+        ORDER BY d.day ASC
+      `, [HOME_TIMEZONE]);
+
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting weekly stats:', error);
+      throw error;
+    }
+  },
+
+  // Get monthly stats
+  async getMonthlyStats() {
+    try {
+      if (useMemoryStore) {
+        // This is a simplified in-memory version for testing
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const recentEvents = memoryStore.filter(e => new Date(e.timestamp) > thirtyDaysAgo);
+        return recentEvents;
+      }
+
+      ensureDatabaseConnected();
+      const result = await pool.query(`
+        WITH date_series AS (
+          SELECT generate_series(
+            (NOW() - interval '29 days')::date,
+            NOW()::date,
+            '1 day'::interval
+          )::date AS day
+        )
+        SELECT
+          d.day,
+          COALESCE(SUM(CASE WHEN e.type = 'milk' THEN e.amount ELSE 0 END), 0) as total_milk,
+          COALESCE(SUM(CASE WHEN e.type = 'sleep' THEN e.amount ELSE 0 END), 0) as total_sleep_minutes,
+          COUNT(CASE WHEN e.type = 'diaper' OR e.type = 'poo' THEN 1 END) as diaper_count
+        FROM date_series d
+        LEFT JOIN baby_events e ON DATE(e.timestamp AT TIME ZONE $1) = d.day
+        GROUP BY d.day
+        ORDER BY d.day ASC
+      `, [HOME_TIMEZONE]);
+
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting monthly stats:', error);
+      throw error;
+    }
+  },
+
   // Get the last incomplete sleep event for a user (N+1 query fix)
   async getLastIncompleteSleep(userName) {
     try {
