@@ -2098,13 +2098,13 @@ class BabyTracker {
 
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';
-                    const icon = normalizedType === 'diaper' && event.subtype
+                    const tooltipIcon = normalizedType === 'diaper' && event.subtype
                         ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.icon || config.icon
                         : config.icon;
                     const label = normalizedType === 'diaper' && event.subtype
                         ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.label || config.label
                         : config.label;
-                    let tooltipText = `${icon || '📝'} ${label || normalizedType} - ${this.formatDisplayTime(event.timestamp)}`;
+                    let tooltipText = `${tooltipIcon || '📝'} ${label || normalizedType} - ${this.formatDisplayTime(event.timestamp)}`;
 
                     if (event.amount && (config.amountUnit || normalizedType === 'milk')) {
                         const unit = config.amountUnit || (normalizedType === 'milk' ? 'ml' : '');
