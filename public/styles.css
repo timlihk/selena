@@ -1105,7 +1105,7 @@ button.loading::after {
     height: 40px;
     background: var(--timeline-hour-bg);
     border-radius: 20px;
-    margin: 0 12px;
+    margin: 0 24px;
 }
 
 .timeline-marker {
