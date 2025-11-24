@@ -56,6 +56,80 @@ function validateTimestamp(timestamp) {
   }
 }
 
+// Enhanced sleep validation functions
+function validateSleepTimes(sleepStart, sleepEnd) {
+  if (!sleepStart || !sleepEnd) {
+    throw new Error('Both sleep start and end times are required');
+  }
+
+  const start = new Date(sleepStart);
+  const end = new Date(sleepEnd);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new Error('Invalid sleep time format');
+  }
+
+  if (end <= start) {
+    throw new Error('Sleep end time must be after sleep start time');
+  }
+
+  // Prevent sleep sessions longer than 12 hours (likely data error)
+  const maxSleepHours = 12;
+  const maxDuration = maxSleepHours * 60 * 60 * 1000; // 12 hours in milliseconds
+  if ((end - start) > maxDuration) {
+    throw new Error(`Sleep duration cannot exceed ${maxSleepHours} hours`);
+  }
+
+  // Prevent sleep sessions in the future
+  const now = new Date();
+  if (start > now || end > now) {
+    throw new Error('Sleep times cannot be in the future');
+  }
+}
+
+// Sleep duration verification - prompts user confirmation for unusual durations
+function verifySleepDuration(duration) {
+  const MIN_SLEEP_DURATION = 10; // 10 minutes
+  const MAX_UNCONFIRMED_DURATION = 300; // 5 hours
+
+  if (duration < MIN_SLEEP_DURATION) {
+    return {
+      requiresConfirmation: true,
+      message: `Sleep duration is only ${duration} minutes. This is very short for a sleep session. Are you sure this is correct?`,
+      duration: duration,
+      issue: 'too_short'
+    };
+  }
+
+  if (duration > MAX_UNCONFIRMED_DURATION) {
+    return {
+      requiresConfirmation: true,
+      message: `Sleep duration is ${Math.round(duration/60*10)/10} hours. This is quite long for a sleep session. Are you sure this is correct?`,
+      duration: duration,
+      issue: 'too_long'
+    };
+  }
+
+  return {
+    requiresConfirmation: false,
+    message: null,
+    duration: duration,
+    issue: null
+  };
+}
+
+// Check if user can start a new sleep session (no existing incomplete sleep)
+async function canStartNewSleep(userName) {
+  const { Event } = require('./database');
+  const incompleteSleep = await Event.getLastIncompleteSleep(userName);
+
+  if (incompleteSleep) {
+    throw new Error(`Cannot start new sleep session. User ${userName} already has an incomplete sleep session (started at ${incompleteSleep.sleep_start_time})`);
+  }
+
+  return true;
+}
+
 const CONSTANTS = {
   ALLOWED_EVENT_TYPES: ['milk', 'poo', 'diaper', 'bath', 'sleep'],
   ALLOWED_DIAPER_SUBTYPES: ['pee', 'poo', 'both'],
@@ -229,6 +303,13 @@ app.post('/api/events', async (req, res) => {
 
     if (type === 'sleep') {
       if (sleepSubType === 'fall_asleep') {
+        // Validate that user doesn't already have an incomplete sleep session
+        try {
+          await canStartNewSleep(userName);
+        } catch (validationError) {
+          return res.status(400).json({ error: validationError.message });
+        }
+
         sleepStart = eventTimestamp || new Date().toISOString();
       } else if (sleepSubType === 'wake_up') {
         sleepEnd = eventTimestamp || new Date().toISOString();
@@ -246,10 +327,29 @@ app.post('/api/events', async (req, res) => {
             }
 
             sleepStart = lastFallAsleep.sleep_start_time;
+
+            // Validate sleep times before calculating duration
+            try {
+              validateSleepTimes(sleepStart, sleepEnd);
+            } catch (validationError) {
+              return { success: false, error: validationError.message };
+            }
+
             const duration = Math.round(
               (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
             );
             calculatedAmount = duration > 0 ? duration : 1;
+
+            // Verify sleep duration for unusual values
+            const verification = verifySleepDuration(calculatedAmount);
+            if (verification.requiresConfirmation) {
+              return {
+                success: false,
+                error: verification.message,
+                requiresConfirmation: true,
+                verification: verification
+              };
+            }
 
             // Update within the transaction
             const updateResult = await client.query(
@@ -268,6 +368,13 @@ app.post('/api/events', async (req, res) => {
           });
 
           if (!result.success) {
+            if (result.requiresConfirmation) {
+              return res.status(422).json({
+                error: result.error,
+                requiresConfirmation: true,
+                verification: result.verification
+              });
+            }
             return res.status(400).json({ error: result.error });
           }
 
@@ -313,6 +420,16 @@ app.post('/api/events', async (req, res) => {
           });
         }
         calculatedAmount = parseInt(amount);
+
+        // Verify sleep duration for unusual values
+        const verification = verifySleepDuration(calculatedAmount);
+        if (verification.requiresConfirmation) {
+          return res.status(422).json({
+            error: verification.message,
+            requiresConfirmation: true,
+            verification: verification
+          });
+        }
       }
     } else {
       calculatedAmount = type === 'milk' ? parseInt(amount) : null;
@@ -335,10 +452,28 @@ app.post('/api/events', async (req, res) => {
             if (incompleteSleep) {
               const sleepEnd = eventTimestamp || new Date().toISOString();
               const sleepStart = incompleteSleep.sleep_start_time;
+
+              // Validate sleep times before auto-completion
+              try {
+                validateSleepTimes(sleepStart, sleepEnd);
+              } catch (validationError) {
+                console.error('Auto-completion validation failed:', validationError.message);
+                return; // Skip auto-completion if validation fails
+              }
+
               const duration = Math.round(
                 (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
               );
               const sleepAmount = duration > 0 ? duration : 1;
+
+              // Verify sleep duration for unusual values (log only, don't block auto-completion)
+              const verification = verifySleepDuration(sleepAmount);
+              if (verification.requiresConfirmation) {
+                console.warn(
+                  `⚠️ Auto-completed sleep event ${incompleteSleep.id} has unusual duration: ${sleepAmount} minutes`,
+                  `(${verification.issue}) - ${verification.message}`
+                );
+              }
 
               // Update within the transaction
               await client.query(
@@ -637,6 +772,119 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// Endpoint to create confirmed sleep events (bypasses duration verification)
+app.post('/api/events/confirmed-sleep', async (req, res) => {
+  try {
+    console.log('Received confirmed sleep event creation request:', req.body);
+    const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, timestamp } = req.body;
+
+    // Basic validation (skip duration verification since it's confirmed)
+    if (!type || type !== 'sleep') {
+      return res.status(400).json({ error: 'Event type must be sleep' });
+    }
+
+    if (!userName) {
+      return res.status(400).json({ error: 'User name is required' });
+    }
+
+    validateUserName(userName);
+
+    if (timestamp) {
+      validateTimestamp(timestamp);
+    }
+
+    // Handle sleep events
+    let calculatedAmount = null;
+    let sleepStart = null;
+    let sleepEnd = null;
+
+    if (sleepSubType === 'fall_asleep') {
+      // Validate that user doesn't already have an incomplete sleep session
+      try {
+        await canStartNewSleep(userName);
+      } catch (validationError) {
+        return res.status(400).json({ error: validationError.message });
+      }
+
+      sleepStart = timestamp || new Date().toISOString();
+    } else if (sleepSubType === 'wake_up') {
+      sleepEnd = timestamp || new Date().toISOString();
+
+      // Complete sleep session within a transaction
+      try {
+        const result = await withTransaction(async (client) => {
+          const lastFallAsleep = await Event.getLastIncompleteSleepForUpdate(userName, client);
+
+          if (!lastFallAsleep) {
+            return { success: false, error: 'No fall asleep event found' };
+          }
+
+          sleepStart = lastFallAsleep.sleep_start_time;
+
+          // Validate sleep times (but skip duration verification)
+          try {
+            validateSleepTimes(sleepStart, sleepEnd);
+          } catch (validationError) {
+            return { success: false, error: validationError.message };
+          }
+
+          const duration = Math.round(
+            (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
+          );
+          calculatedAmount = duration > 0 ? duration : 1;
+
+          // Update within the transaction
+          const updateResult = await client.query(
+            `UPDATE baby_events
+             SET amount = $1, sleep_end_time = $2
+             WHERE id = $3
+             RETURNING *`,
+            [calculatedAmount, sleepEnd, lastFallAsleep.id]
+          );
+
+          return {
+            success: true,
+            event: updateResult.rows[0],
+            original: lastFallAsleep
+          };
+        });
+
+        if (!result.success) {
+          return res.status(400).json({ error: result.error });
+        }
+
+        // Return the completed sleep event
+        return res.status(201).json({
+          ...result.original,
+          amount: calculatedAmount,
+          sleep_end_time: sleepEnd,
+          ...result.event
+        });
+      } catch (error) {
+        console.error('Failed to complete confirmed wake-up:', error);
+        return res.status(500).json({ error: 'Failed to complete sleep session' });
+      }
+    } else {
+      // Legacy sleep event with manual duration
+      if (!amount || amount <= 0 || amount > CONSTANTS.VALIDATION.MAX_SLEEP_DURATION) {
+        return res.status(400).json({
+          error: `Sleep duration is required and must be between 1 and ${CONSTANTS.VALIDATION.MAX_SLEEP_DURATION} minutes`
+        });
+      }
+      calculatedAmount = parseInt(amount);
+    }
+
+    // Create the confirmed sleep event
+    const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, null, timestamp);
+    console.log('Confirmed sleep event created successfully:', event);
+    res.status(201).json(event);
+
+  } catch (error) {
+    console.error('❌ Error creating confirmed sleep event:', error);
+    res.status(500).json({ error: 'Failed to create confirmed sleep event' });
+  }
+});
 
 if (require.main === module) {
   startServer();
