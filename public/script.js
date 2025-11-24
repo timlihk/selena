@@ -1974,37 +1974,15 @@ class BabyTracker {
 
             hoursContainer.innerHTML = '<div class="timeline-hours-labels"></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
-
-            // Create three sections: Morning (00:00-08:00), Day (08:00-16:00), Evening (16:00-24:00)
-            const sections = [
-                { label: '🌅 Morning', startHour: 0, endHour: 8 },
-                { label: '☀️ Day', startHour: 8, endHour: 16 },
-                { label: '🌙 Evening', startHour: 16, endHour: 24 }
-            ];
-
-            // Create hour labels for each section
-            sections.forEach(section => {
-                const sectionDiv = document.createElement('div');
-                sectionDiv.className = 'timeline-section';
-
-                const sectionLabel = document.createElement('div');
-                sectionLabel.className = 'timeline-section-label';
-                sectionLabel.textContent = section.label;
-                sectionDiv.appendChild(sectionLabel);
-
-                const hoursDiv = document.createElement('div');
-                hoursDiv.className = 'timeline-section-hours';
-
-                // Add hour markers for this section
-                for (let hour = section.startHour; hour < section.endHour; hour += 2) {
-                    const hourDiv = document.createElement('div');
-                    hourDiv.className = 'timeline-hour';
-                    hourDiv.textContent = `${hour.toString().padStart(2, '0')}:00`;
-                    hoursDiv.appendChild(hourDiv);
-                }
-
-                sectionDiv.appendChild(hoursDiv);
-                labelsContainer.appendChild(sectionDiv);
+            const hourLabels = [];
+            for (let hour = 0; hour <= this.UI_CONSTANTS.TIMELINE_HOURS; hour += 6) {
+                hourLabels.push(hour);
+            }
+            hourLabels.forEach(hour => {
+                const hourDiv = document.createElement('div');
+                hourDiv.className = 'timeline-hour';
+                hourDiv.textContent = `${hour.toString().padStart(2, '0')}:00`;
+                labelsContainer.appendChild(hourDiv);
             });
 
             eventsContainer.innerHTML = '';
@@ -2014,128 +1992,80 @@ class BabyTracker {
                 return;
             }
 
-            // Create three separate timeline lanes for each section
-            const sectionLaneDivs = {};
-            const sectionTracks = {};
+            // Create unified timeline with single lane
+            const unifiedLaneDiv = document.createElement('div');
+            unifiedLaneDiv.className = 'timeline-lane';
 
-            sections.forEach(section => {
-                const sectionLaneDiv = document.createElement('div');
-                sectionLaneDiv.className = 'timeline-lane';
-                sectionLaneDivs[`${section.startHour}-${section.endHour}`] = sectionLaneDiv;
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'timeline-lane-label';
+            labelDiv.innerHTML = '<span>📊</span>';
+            unifiedLaneDiv.appendChild(labelDiv);
 
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'timeline-lane-label';
-                labelDiv.innerHTML = `<span>${section.label}</span>`;
-                sectionLaneDiv.appendChild(labelDiv);
+            const trackDiv = document.createElement('div');
+            trackDiv.className = 'timeline-lane-track';
 
-                const trackDiv = document.createElement('div');
-                trackDiv.className = 'timeline-lane-track';
-                trackDiv.dataset.section = `${section.startHour}-${section.endHour}`;
-                sectionTracks[`${section.startHour}-${section.endHour}`] = trackDiv;
-            });
-
-            // Process events and distribute them into appropriate sections
-
+            // Process events for unified timeline
             todayEvents.forEach(event => {
                 const eventDate = new Date(event.timestamp);
                 const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
-                const eventHour = eventInTz.getHours();
-
-                // Find which section this event belongs to
-                let targetSection = null;
-                for (const section of sections) {
-                    if (eventHour >= section.startHour && eventHour < section.endHour) {
-                        targetSection = section;
-                        break;
-                    }
-                }
-
-                // If no section found (shouldn't happen), use the first section
-                if (!targetSection) {
-                    targetSection = sections[0];
-                }
-
-                const targetTrack = sectionTracks[`${targetSection.startHour}-${targetSection.endHour}`];
-                const sectionStartMinutes = targetSection.startHour * 60;
-                const sectionEndMinutes = targetSection.endHour * 60;
-                const sectionDuration = sectionEndMinutes - sectionStartMinutes;
-
                 const minutes = eventInTz.getHours() * 60 + eventInTz.getMinutes();
-                const relativeMinutes = minutes - sectionStartMinutes;
-                const leftPosition = (relativeMinutes / sectionDuration) * 100;
+                const leftPosition = (minutes / (24 * 60)) * 100;
+
+                const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
+                const config = this.EVENT_CONFIG[normalizedType] || {};
 
                 if (normalizedType === 'sleep' && event.sleep_start_time && event.sleep_end_time) {
+                    // Create sleep progress bar
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = new Date(event.sleep_end_time);
                     const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
                     const sleepEndInTz = new Date(sleepEnd.toLocaleString('en-US', { timeZone: tz }));
 
-                    const sleepStartMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
-                    const sleepEndMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
+                    const startMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
+                    const endMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
 
-                    // Iterate over each section to create sleep segments
-                    sections.forEach(section => {
-                        const sectionStartMinutes = section.startHour * 60;
-                        const sectionEndMinutes = section.endHour * 60;
+                    const startPosition = (startMinutes / (24 * 60)) * 100;
+                    const endPosition = (endMinutes / (24 * 60)) * 100;
+                    const width = Math.max(1, endPosition - startPosition);
 
-                        // Check for overlap between sleep and section
-                        if (sleepStartMinutes < sectionEndMinutes && sleepEndMinutes > sectionStartMinutes) {
-                            const segmentStartMinutes = Math.max(sleepStartMinutes, sectionStartMinutes);
-                            const segmentEndMinutes = Math.min(sleepEndMinutes, sectionEndMinutes);
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'timeline-progress-bar sleep';
+                    progressBar.style.left = `${startPosition}%`;
+                    progressBar.style.width = `${width}%`;
+                    progressBar.style.backgroundColor = config.color || '#43e97b';
 
-                            const sectionDuration = sectionEndMinutes - sectionStartMinutes;
-                            const relativeStart = segmentStartMinutes - sectionStartMinutes;
-                            const relativeEnd = segmentEndMinutes - sectionStartMinutes;
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'timeline-marker-tooltip';
+                    const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
+                    let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
+                    tooltipText += `\nDuration: ${duration} minutes`;
+                    if (event.user_name) {
+                        tooltipText += `\n${event.user_name}`;
+                    }
+                    tooltip.textContent = tooltipText;
+                    tooltip.style.whiteSpace = 'pre-line';
 
-                            const startPosition = (relativeStart / sectionDuration) * 100;
-                            const endPosition = (relativeEnd / sectionDuration) * 100;
-                            const width = endPosition - startPosition;
+                    progressBar.appendChild(tooltip);
 
-                            if (width > 0) {
-                                const progressBar = document.createElement('div');
-                                progressBar.className = 'timeline-progress-bar sleep';
-                                progressBar.style.left = `${startPosition}%`;
-                                progressBar.style.width = `${width}%`;
-                                progressBar.style.backgroundColor = config.color || '#43e97b';
-
-                                const tooltip = document.createElement('div');
-                                tooltip.className = 'timeline-marker-tooltip';
-                                const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
-                                let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
-                                tooltipText += `\nDuration: ${duration} minutes`;
-                                if (event.user_name) {
-                                    tooltipText += `\n${event.user_name}`;
-                                }
-                                tooltip.textContent = tooltipText;
-                                tooltip.style.whiteSpace = 'pre-line';
-
-                                progressBar.appendChild(tooltip);
-
-                                progressBar.addEventListener('click', (eventObj) => {
-                                    eventObj.stopPropagation();
-                                    if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
-                                        this.activeTimelineMarker.classList.remove('show-tooltip');
-                                    }
-                                    progressBar.classList.toggle('show-tooltip');
-                                    this.activeTimelineMarker = progressBar.classList.contains('show-tooltip') ? progressBar : null;
-                                });
-
-                                progressBar.addEventListener('touchstart', (eventObj) => {
-                                    eventObj.stopPropagation();
-                                    if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
-                                        this.activeTimelineMarker.classList.remove('show-tooltip');
-                                    }
-                                    progressBar.classList.add('show-tooltip');
-                                    this.activeTimelineMarker = progressBar;
-                                }, { passive: true });
-
-                                const targetTrack = sectionTracks[`${section.startHour}-${section.endHour}`];
-                                if(targetTrack) {
-                                    targetTrack.appendChild(progressBar);
-                                }
-                            }
+                    progressBar.addEventListener('click', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
                         }
+                        progressBar.classList.toggle('show-tooltip');
+                        this.activeTimelineMarker = progressBar.classList.contains('show-tooltip') ? progressBar : null;
                     });
+
+                    progressBar.addEventListener('touchstart', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                        }
+                        progressBar.classList.add('show-tooltip');
+                        this.activeTimelineMarker = progressBar;
+                    }, { passive: true });
+
+                    trackDiv.appendChild(progressBar);
                 } else {
                     // Create marker for other event types
                     const marker = document.createElement('div');
@@ -2207,17 +2137,12 @@ class BabyTracker {
                         this.activeTimelineMarker = marker;
                     }, { passive: true });
 
-                    targetTrack.appendChild(marker);
+                    trackDiv.appendChild(marker);
                 }
             });
 
-            // Append all section lanes to the events container
-            sections.forEach(section => {
-                const sectionLaneDiv = sectionLaneDivs[`${section.startHour}-${section.endHour}`];
-                const trackDiv = sectionTracks[`${section.startHour}-${section.endHour}`];
-                sectionLaneDiv.appendChild(trackDiv);
-                eventsContainer.appendChild(sectionLaneDiv);
-            });
+            unifiedLaneDiv.appendChild(trackDiv);
+            eventsContainer.appendChild(unifiedLaneDiv);
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');
