@@ -2069,22 +2069,32 @@ class BabyTracker {
                 } else {
                     // Create marker for other event types
                     const marker = document.createElement('div');
-                    marker.className = 'timeline-marker';
+                    marker.className = 'timeline-marker timeline-icon-marker';
                     marker.style.left = `${leftPosition}%`;
 
+                    // Get the appropriate icon
+                    let icon;
                     if (normalizedType === 'diaper') {
                         const subtype = event.subtype || 'poo';
                         marker.classList.add(`diaper-${subtype}`);
+                        icon = this.EVENT_CONFIG.diaper?.subtypes?.[subtype]?.icon || config.icon;
                         const subtypeColor = this.EVENT_CONFIG.diaper?.subtypes?.[subtype]?.color;
                         if (subtypeColor) {
                             marker.style.background = subtypeColor;
                         }
                     } else {
                         marker.classList.add(normalizedType);
+                        icon = config.icon;
                         if (config.color) {
                             marker.style.background = config.color;
                         }
                     }
+
+                    // Create icon element
+                    const iconElement = document.createElement('span');
+                    iconElement.className = 'timeline-icon';
+                    iconElement.textContent = icon || '📝';
+                    marker.appendChild(iconElement);
 
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';

@@ -1203,6 +1203,65 @@ button.loading::after {
     }
 }
 
+/* Timeline Icon Marker Styles */
+.timeline-icon-marker {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    background: var(--bg-secondary);
+    transition: all 0.2s ease;
+}
+
+.timeline-icon-marker:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10;
+}
+
+.timeline-icon {
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.timeline-icon-marker.milk {
+    background: #667eea;
+}
+
+.timeline-icon-marker.diaper-pee {
+    background: #4facfe;
+}
+
+.timeline-icon-marker.diaper-poo {
+    background: #8b6914;
+}
+
+.timeline-icon-marker.diaper-both {
+    background: linear-gradient(135deg, #4facfe 0%, #8b6914 100%);
+}
+
+.timeline-icon-marker.bath {
+    background: #4facfe;
+}
+
+@media (max-width: 768px) {
+    .timeline-icon-marker {
+        width: 28px;
+        height: 28px;
+    }
+
+    .timeline-icon {
+        font-size: 14px;
+    }
+}
+
 .timeline-marker-tooltip {
     position: absolute;
     bottom: calc(100% + 12px);
