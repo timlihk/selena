@@ -1974,15 +1974,37 @@ class BabyTracker {
 
             hoursContainer.innerHTML = '<div class="timeline-hours-labels"></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
-            const hourLabels = [];
-            for (let hour = 0; hour <= this.UI_CONSTANTS.TIMELINE_HOURS; hour += 6) {
-                hourLabels.push(hour);
-            }
-            hourLabels.forEach(hour => {
-                const hourDiv = document.createElement('div');
-                hourDiv.className = 'timeline-hour';
-                hourDiv.textContent = `${hour.toString().padStart(2, '0')}:00`;
-                labelsContainer.appendChild(hourDiv);
+
+            // Create three sections: Morning (00:00-08:00), Day (08:00-16:00), Evening (16:00-24:00)
+            const sections = [
+                { label: '🌅 Morning', startHour: 0, endHour: 8 },
+                { label: '☀️ Day', startHour: 8, endHour: 16 },
+                { label: '🌙 Evening', startHour: 16, endHour: 24 }
+            ];
+
+            // Create hour labels for each section
+            sections.forEach(section => {
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'timeline-section';
+
+                const sectionLabel = document.createElement('div');
+                sectionLabel.className = 'timeline-section-label';
+                sectionLabel.textContent = section.label;
+                sectionDiv.appendChild(sectionLabel);
+
+                const hoursDiv = document.createElement('div');
+                hoursDiv.className = 'timeline-section-hours';
+
+                // Add hour markers for this section
+                for (let hour = section.startHour; hour < section.endHour; hour += 2) {
+                    const hourDiv = document.createElement('div');
+                    hourDiv.className = 'timeline-hour';
+                    hourDiv.textContent = `${hour.toString().padStart(2, '0')}:00`;
+                    hoursDiv.appendChild(hourDiv);
+                }
+
+                sectionDiv.appendChild(hoursDiv);
+                labelsContainer.appendChild(sectionDiv);
             });
 
             eventsContainer.innerHTML = '';
@@ -1992,24 +2014,55 @@ class BabyTracker {
                 return;
             }
 
-            // Create unified timeline with single lane
-            const unifiedLaneDiv = document.createElement('div');
-            unifiedLaneDiv.className = 'timeline-lane';
+            // Create three separate timeline lanes for each section
+            const sectionLaneDivs = {};
+            const sectionTracks = {};
 
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'timeline-lane-label';
-            labelDiv.innerHTML = '<span>📊</span>';
-            unifiedLaneDiv.appendChild(labelDiv);
+            sections.forEach(section => {
+                const sectionLaneDiv = document.createElement('div');
+                sectionLaneDiv.className = 'timeline-lane';
+                sectionLaneDivs[`${section.startHour}-${section.endHour}`] = sectionLaneDiv;
 
-            const trackDiv = document.createElement('div');
-            trackDiv.className = 'timeline-lane-track';
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'timeline-lane-label';
+                labelDiv.innerHTML = `<span>${section.label}</span>`;
+                sectionLaneDiv.appendChild(labelDiv);
 
-            // Process events for unified timeline
+                const trackDiv = document.createElement('div');
+                trackDiv.className = 'timeline-lane-track';
+                trackDiv.dataset.section = `${section.startHour}-${section.endHour}`;
+                sectionTracks[`${section.startHour}-${section.endHour}`] = trackDiv;
+            });
+
+            // Process events and distribute them into appropriate sections
+
             todayEvents.forEach(event => {
                 const eventDate = new Date(event.timestamp);
                 const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
+                const eventHour = eventInTz.getHours();
+
+                // Find which section this event belongs to
+                let targetSection = null;
+                for (const section of sections) {
+                    if (eventHour >= section.startHour && eventHour < section.endHour) {
+                        targetSection = section;
+                        break;
+                    }
+                }
+
+                // If no section found (shouldn't happen), use the first section
+                if (!targetSection) {
+                    targetSection = sections[0];
+                }
+
+                const targetTrack = sectionTracks[`${targetSection.startHour}-${targetSection.endHour}`];
+                const sectionStartMinutes = targetSection.startHour * 60;
+                const sectionEndMinutes = targetSection.endHour * 60;
+                const sectionDuration = sectionEndMinutes - sectionStartMinutes;
+
                 const minutes = eventInTz.getHours() * 60 + eventInTz.getMinutes();
-                const leftPosition = (minutes / (24 * 60)) * 100;
+                const relativeMinutes = minutes - sectionStartMinutes;
+                const leftPosition = (relativeMinutes / sectionDuration) * 100;
 
                 const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
                 const config = this.EVENT_CONFIG[normalizedType] || {};
@@ -2024,8 +2077,11 @@ class BabyTracker {
                     const startMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
                     const endMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
 
-                    const startPosition = (startMinutes / (24 * 60)) * 100;
-                    const endPosition = (endMinutes / (24 * 60)) * 100;
+                    const relativeStartMinutes = Math.max(0, startMinutes - sectionStartMinutes);
+                    const relativeEndMinutes = Math.min(sectionDuration, endMinutes - sectionStartMinutes);
+
+                    const startPosition = (relativeStartMinutes / sectionDuration) * 100;
+                    const endPosition = (relativeEndMinutes / sectionDuration) * 100;
                     const width = Math.max(1, endPosition - startPosition);
 
                     const progressBar = document.createElement('div');
@@ -2065,7 +2121,7 @@ class BabyTracker {
                         this.activeTimelineMarker = progressBar;
                     }, { passive: true });
 
-                    trackDiv.appendChild(progressBar);
+                    targetTrack.appendChild(progressBar);
                 } else {
                     // Create marker for other event types
                     const marker = document.createElement('div');
@@ -2137,12 +2193,17 @@ class BabyTracker {
                         this.activeTimelineMarker = marker;
                     }, { passive: true });
 
-                    trackDiv.appendChild(marker);
+                    targetTrack.appendChild(marker);
                 }
             });
 
-            unifiedLaneDiv.appendChild(trackDiv);
-            eventsContainer.appendChild(unifiedLaneDiv);
+            // Append all section lanes to the events container
+            sections.forEach(section => {
+                const sectionLaneDiv = sectionLaneDivs[`${section.startHour}-${section.endHour}`];
+                const trackDiv = sectionTracks[`${section.startHour}-${section.endHour}`];
+                sectionLaneDiv.appendChild(trackDiv);
+                eventsContainer.appendChild(sectionLaneDiv);
+            });
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');
