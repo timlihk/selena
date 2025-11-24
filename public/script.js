@@ -72,7 +72,7 @@ class BabyTracker {
         this.setCurrentTime();
         this.bindEvents();
         await this.loadEvents();
-        await this.updateStats();
+        await this.updateAllStats();
         await this.renderTimeline();
     }
 
@@ -317,7 +317,7 @@ class BabyTracker {
             }
 
             await this.loadEvents();
-            await this.updateStats();
+            await this.updateAllStats();
             await this.renderTimeline();
             this.resetForm();
 
@@ -397,7 +397,7 @@ class BabyTracker {
             }
 
             await this.loadEvents();
-            await this.updateStats();
+            await this.updateAllStats();
             this.setCurrentTime();
 
             const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
@@ -554,11 +554,17 @@ class BabyTracker {
         return eventItem;
     }
 
-    async updateStats() {
+    async updateAllStats() {
+        await this.updateTodayStats();
+        await this.updateWeeklyStats();
+        await this.updateMonthlyStats();
+    }
+
+    async updateTodayStats() {
         try {
             const response = await fetch('/api/stats/today');
             if (!response.ok) {
-                throw new Error('Failed to load stats');
+                throw new Error('Failed to load today stats');
             }
             const stats = await response.json();
 
@@ -569,15 +575,8 @@ class BabyTracker {
             document.getElementById('totalMilk').textContent = stats.totalMilk || 0;
             document.getElementById('totalSleep').textContent = stats.totalSleepHours || 0;
         } catch (error) {
-            console.error('Error loading stats:', error);
-            document.getElementById('milkCount').textContent = '0';
-            document.getElementById('pooCount').textContent = '0';
-            document.getElementById('bathCount').textContent = '0';
-            document.getElementById('sleepCount').textContent = '0';
-            document.getElementById('totalMilk').textContent = '0';
-            document.getElementById('totalSleep').textContent = '0';
+            console.error('Error loading today stats:', error);
         } finally {
-            // Always update intelligent insights even if stats endpoint fails
             this.updateFeedingIntelligence();
             this.updateSleepQuality();
             if (typeof this.updateDiaperHealth === 'function') {
@@ -587,6 +586,40 @@ class BabyTracker {
                 this.updateSmartAlerts();
             }
             this.updateAdaptiveCoach();
+        }
+    }
+
+    async updateWeeklyStats() {
+        try {
+            const response = await fetch('/api/stats/weekly');
+            if (!response.ok) {
+                throw new Error('Failed to load weekly stats');
+            }
+            const stats = await response.json();
+
+            document.getElementById('weeklyMilkCount').textContent = stats.milk || 0;
+            document.getElementById('weeklyPooCount').textContent = stats.poo || 0;
+            document.getElementById('weeklyTotalMilk').textContent = stats.totalMilk || 0;
+            document.getElementById('weeklyTotalSleep').textContent = stats.totalSleepHours || 0;
+        } catch (error) {
+            console.error('Error loading weekly stats:', error);
+        }
+    }
+
+    async updateMonthlyStats() {
+        try {
+            const response = await fetch('/api/stats/monthly');
+            if (!response.ok) {
+                throw new Error('Failed to load monthly stats');
+            }
+            const stats = await response.json();
+
+            document.getElementById('monthlyMilkCount').textContent = stats.milk || 0;
+            document.getElementById('monthlyPooCount').textContent = stats.poo || 0;
+            document.getElementById('monthlyTotalMilk').textContent = stats.totalMilk || 0;
+            document.getElementById('monthlyTotalSleep').textContent = stats.totalSleepHours || 0;
+        } catch (error) {
+            console.error('Error loading monthly stats:', error);
         }
     }
 
@@ -1343,7 +1376,7 @@ class BabyTracker {
             }
 
             await this.loadEvents();
-            await this.updateStats();
+            await this.updateAllStats();
             await this.renderTimeline();
 
             this.setButtonLoading(deleteButton, false);
@@ -1560,7 +1593,7 @@ class BabyTracker {
             }
 
             await this.loadEvents();
-            await this.updateStats();
+            await this.updateAllStats();
             await this.renderTimeline();
             this.setButtonLoading(saveButton, false);
             loadingActive = false;
