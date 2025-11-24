@@ -1992,41 +1992,87 @@ class BabyTracker {
                 return;
             }
 
-            const timelineTypes = ['milk', 'diaper', 'bath', 'sleep'];
-            const eventsByType = {};
+            // Create unified timeline with single lane
+            const unifiedLaneDiv = document.createElement('div');
+            unifiedLaneDiv.className = 'timeline-lane';
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'timeline-lane-label';
+            labelDiv.innerHTML = '<span>📊</span>';
+            unifiedLaneDiv.appendChild(labelDiv);
+
+            const trackDiv = document.createElement('div');
+            trackDiv.className = 'timeline-lane-track';
+
+            // Process events for unified timeline
             todayEvents.forEach(event => {
+                const eventDate = new Date(event.timestamp);
+                const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
+                const minutes = eventInTz.getHours() * 60 + eventInTz.getMinutes();
+                const leftPosition = (minutes / (24 * 60)) * 100;
+
                 const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
-                if (!eventsByType[normalizedType]) {
-                    eventsByType[normalizedType] = [];
-                }
-                eventsByType[normalizedType].push(event);
-            });
+                const config = this.EVENT_CONFIG[normalizedType] || {};
 
-            timelineTypes.forEach(type => {
-                const config = this.EVENT_CONFIG[type] || {};
-                const laneDiv = document.createElement('div');
-                laneDiv.className = 'timeline-lane';
+                if (normalizedType === 'sleep' && event.sleep_start_time && event.sleep_end_time) {
+                    // Create sleep progress bar
+                    const sleepStart = new Date(event.sleep_start_time);
+                    const sleepEnd = new Date(event.sleep_end_time);
+                    const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
+                    const sleepEndInTz = new Date(sleepEnd.toLocaleString('en-US', { timeZone: tz }));
 
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'timeline-lane-label';
-                labelDiv.innerHTML = `<span>${config.icon || '📝'}</span>`;
-                laneDiv.appendChild(labelDiv);
+                    const startMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
+                    const endMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
 
-                const trackDiv = document.createElement('div');
-                trackDiv.className = 'timeline-lane-track';
+                    const startPosition = (startMinutes / (24 * 60)) * 100;
+                    const endPosition = (endMinutes / (24 * 60)) * 100;
+                    const width = Math.max(1, endPosition - startPosition);
 
-                const events = eventsByType[type] || [];
-                events.forEach(event => {
-                    const eventDate = new Date(event.timestamp);
-                    const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
-                    const minutes = eventInTz.getHours() * 60 + eventInTz.getMinutes();
-                    const leftPosition = (minutes / (24 * 60)) * 100;
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'timeline-progress-bar sleep';
+                    progressBar.style.left = `${startPosition}%`;
+                    progressBar.style.width = `${width}%`;
+                    progressBar.style.backgroundColor = config.color || '#43e97b';
 
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'timeline-marker-tooltip';
+                    const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
+                    let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
+                    tooltipText += `\nDuration: ${duration} minutes`;
+                    if (event.user_name) {
+                        tooltipText += `\n${event.user_name}`;
+                    }
+                    tooltip.textContent = tooltipText;
+                    tooltip.style.whiteSpace = 'pre-line';
+
+                    progressBar.appendChild(tooltip);
+
+                    progressBar.addEventListener('click', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                        }
+                        progressBar.classList.toggle('show-tooltip');
+                        this.activeTimelineMarker = progressBar.classList.contains('show-tooltip') ? progressBar : null;
+                    });
+
+                    progressBar.addEventListener('touchstart', (eventObj) => {
+                        eventObj.stopPropagation();
+                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                        }
+                        progressBar.classList.add('show-tooltip');
+                        this.activeTimelineMarker = progressBar;
+                    }, { passive: true });
+
+                    trackDiv.appendChild(progressBar);
+                } else {
+                    // Create marker for other event types
                     const marker = document.createElement('div');
                     marker.className = 'timeline-marker';
                     marker.style.left = `${leftPosition}%`;
 
-                    if (type === 'diaper') {
+                    if (normalizedType === 'diaper') {
                         const subtype = event.subtype || 'poo';
                         marker.classList.add(`diaper-${subtype}`);
                         const subtypeColor = this.EVENT_CONFIG.diaper?.subtypes?.[subtype]?.color;
@@ -2034,7 +2080,7 @@ class BabyTracker {
                             marker.style.background = subtypeColor;
                         }
                     } else {
-                        marker.classList.add(type);
+                        marker.classList.add(normalizedType);
                         if (config.color) {
                             marker.style.background = config.color;
                         }
@@ -2042,16 +2088,16 @@ class BabyTracker {
 
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';
-                    const icon = type === 'diaper' && event.subtype
+                    const icon = normalizedType === 'diaper' && event.subtype
                         ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.icon || config.icon
                         : config.icon;
-                    const label = type === 'diaper' && event.subtype
+                    const label = normalizedType === 'diaper' && event.subtype
                         ? this.EVENT_CONFIG.diaper?.subtypes?.[event.subtype]?.label || config.label
                         : config.label;
-                    let tooltipText = `${icon || '📝'} ${label || type} - ${this.formatDisplayTime(event.timestamp)}`;
+                    let tooltipText = `${icon || '📝'} ${label || normalizedType} - ${this.formatDisplayTime(event.timestamp)}`;
 
-                    if (event.amount && (config.amountUnit || type === 'milk' || type === 'sleep')) {
-                        const unit = config.amountUnit || (type === 'milk' ? 'ml' : type === 'sleep' ? 'min' : '');
+                    if (event.amount && (config.amountUnit || normalizedType === 'milk')) {
+                        const unit = config.amountUnit || (normalizedType === 'milk' ? 'ml' : '');
                         tooltipText += ` (${event.amount}${unit})`;
                     }
 
@@ -2082,11 +2128,11 @@ class BabyTracker {
                     }, { passive: true });
 
                     trackDiv.appendChild(marker);
-                });
-
-                laneDiv.appendChild(trackDiv);
-                eventsContainer.appendChild(laneDiv);
+                }
             });
+
+            unifiedLaneDiv.appendChild(trackDiv);
+            eventsContainer.appendChild(unifiedLaneDiv);
         } catch (error) {
             console.error('Error rendering timeline:', error);
             const eventsContainer = document.querySelector('.timeline-events');

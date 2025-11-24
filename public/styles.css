@@ -1133,6 +1133,76 @@ button.loading::after {
     background: #43e97b;
 }
 
+/* Timeline Progress Bar Styles */
+.timeline-progress-bar {
+    position: absolute;
+    height: 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.8;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.timeline-progress-bar:hover {
+    opacity: 1;
+    transform: translateY(-50%) scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.timeline-progress-bar.sleep {
+    background: #43e97b;
+}
+
+.timeline-progress-bar .timeline-marker-tooltip {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 20;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.timeline-progress-bar:hover .timeline-marker-tooltip,
+.timeline-progress-bar.show-tooltip .timeline-marker-tooltip {
+    opacity: 1;
+}
+
+.timeline-progress-bar .timeline-marker-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--bg-secondary);
+}
+
+@media (max-width: 768px) {
+    .timeline-progress-bar {
+        height: 16px;
+        border-radius: 8px;
+    }
+
+    .timeline-progress-bar .timeline-marker-tooltip {
+        font-size: 0.75rem;
+        padding: 8px 10px;
+    }
+}
+
 .timeline-marker-tooltip {
     position: absolute;
     bottom: calc(100% + 12px);
