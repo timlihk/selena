@@ -335,6 +335,16 @@ app.post('/api/events', async (req, res) => {
               return { success: false, error: validationError.message };
             }
 
+            // Check for overlapping sleep sessions BEFORE updating
+            const overlappingSleep = await Event.findOverlappingSleep(sleepStart, sleepEnd, lastFallAsleep.id);
+            if (overlappingSleep.length > 0) {
+              return {
+                success: false,
+                error: `New sleep session from ${sleepStart} to ${sleepEnd} overlaps with existing sleep session (ID: ${overlappingSleep[0].id})`,
+                code: 'OVERLAP_DETECTED'
+              };
+            }
+
             const duration = Math.round(
               (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
             );
@@ -428,6 +438,20 @@ app.post('/api/events', async (req, res) => {
             error: verification.message,
             requiresConfirmation: true,
             verification: verification
+          });
+        }
+
+        // For legacy events, calculate start and end times to check for overlap
+        sleepStart = eventTimestamp || new Date().toISOString();
+        const end_time = new Date(sleepStart);
+        end_time.setMinutes(end_time.getMinutes() + calculatedAmount);
+        sleepEnd = end_time.toISOString();
+
+        const overlappingSleep = await Event.findOverlappingSleep(sleepStart, sleepEnd);
+        if (overlappingSleep.length > 0) {
+          return res.status(409).json({
+            error: `New sleep session from ${sleepStart} to ${sleepEnd} overlaps with existing sleep session (ID: ${overlappingSleep[0].id})`,
+            code: 'OVERLAP_DETECTED'
           });
         }
       }
@@ -663,6 +687,24 @@ async function updateEventHandler(req, res) {
       }
 
       timestampForUpdate = normalizedTimestamp || baseSleepStart || existingTimestamp;
+
+      // Validate for overlapping sleep sessions before updating
+      if (updatedSleepStart && updatedSleepEnd) {
+        // Ensure sleep times are valid before checking for overlap
+        try {
+          validateSleepTimes(updatedSleepStart, updatedSleepEnd);
+        } catch (validationError) {
+          return res.status(400).json({ error: validationError.message });
+        }
+
+        const overlappingSleep = await Event.findOverlappingSleep(updatedSleepStart, updatedSleepEnd, eventId);
+        if (overlappingSleep.length > 0) {
+          return res.status(409).json({
+            error: `Updated sleep session from ${updatedSleepStart} to ${updatedSleepEnd} overlaps with existing sleep session (ID: ${overlappingSleep[0].id})`,
+            code: 'OVERLAP_DETECTED'
+          });
+        }
+      }
     }
 
     const event = await Event.update(

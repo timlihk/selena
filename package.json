@@ -6,9 +6,11 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node tests/run-tests.js"
+    "test": "jest",
+    "cli": "node cli.js"
   },
   "dependencies": {
+    "commander": "^14.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -26,5 +28,9 @@
     "events"
   ],
   "author": "Baby Tracker App",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4"
+  }
 }

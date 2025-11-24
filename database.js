@@ -696,6 +696,46 @@ const Event = {
     }
   },
 
+  // Find sleep events that overlap with a given time range
+  async findOverlappingSleep(startTime, endTime, eventIdToExclude = null) {
+    try {
+      if (useMemoryStore) {
+        // In-memory implementation for testing
+        return memoryStore.filter(event => {
+          if (event.type !== 'sleep' || !event.sleep_start_time || !event.sleep_end_time) {
+            return false;
+          }
+          if (eventIdToExclude && event.id === eventIdToExclude) {
+            return false;
+          }
+          const existingStart = new Date(event.sleep_start_time);
+          const existingEnd = new Date(event.sleep_end_time);
+          const newStart = new Date(startTime);
+          const newEnd = new Date(endTime);
+          // Overlap condition: (StartA < EndB) and (EndA > StartB)
+          return newStart < existingEnd && newEnd > existingStart;
+        }).map(cloneEvent);
+      }
+
+      ensureDatabaseConnected();
+      const query = `
+        SELECT id, sleep_start_time, sleep_end_time, amount, user_name
+        FROM baby_events
+        WHERE type = 'sleep'
+          AND sleep_start_time IS NOT NULL
+          AND sleep_end_time IS NOT NULL
+          AND ($1, $2) OVERLAPS (sleep_start_time, sleep_end_time)
+          AND ($3::int IS NULL OR id != $3::int)
+      `;
+      const params = [startTime, endTime, eventIdToExclude];
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('Error finding overlapping sleep events:', error);
+      throw error;
+    }
+  },
+
   // Delete an event
   async delete(id) {
     try {
@@ -767,5 +807,6 @@ module.exports = {
   Event,
   testConnection,
   resetMemoryStore,
-  withTransaction
+  withTransaction,
+  pool
 };
