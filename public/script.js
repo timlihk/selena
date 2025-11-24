@@ -2064,64 +2064,78 @@ class BabyTracker {
                 const relativeMinutes = minutes - sectionStartMinutes;
                 const leftPosition = (relativeMinutes / sectionDuration) * 100;
 
-                const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
-                const config = this.EVENT_CONFIG[normalizedType] || {};
-
                 if (normalizedType === 'sleep' && event.sleep_start_time && event.sleep_end_time) {
-                    // Create sleep progress bar
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = new Date(event.sleep_end_time);
                     const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
                     const sleepEndInTz = new Date(sleepEnd.toLocaleString('en-US', { timeZone: tz }));
 
-                    const startMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
-                    const endMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
+                    const sleepStartMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
+                    const sleepEndMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
 
-                    const relativeStartMinutes = Math.max(0, startMinutes - sectionStartMinutes);
-                    const relativeEndMinutes = Math.min(sectionDuration, endMinutes - sectionStartMinutes);
+                    // Iterate over each section to create sleep segments
+                    sections.forEach(section => {
+                        const sectionStartMinutes = section.startHour * 60;
+                        const sectionEndMinutes = section.endHour * 60;
 
-                    const startPosition = (relativeStartMinutes / sectionDuration) * 100;
-                    const endPosition = (relativeEndMinutes / sectionDuration) * 100;
-                    const width = Math.max(1, endPosition - startPosition);
+                        // Check for overlap between sleep and section
+                        if (sleepStartMinutes < sectionEndMinutes && sleepEndMinutes > sectionStartMinutes) {
+                            const segmentStartMinutes = Math.max(sleepStartMinutes, sectionStartMinutes);
+                            const segmentEndMinutes = Math.min(sleepEndMinutes, sectionEndMinutes);
 
-                    const progressBar = document.createElement('div');
-                    progressBar.className = 'timeline-progress-bar sleep';
-                    progressBar.style.left = `${startPosition}%`;
-                    progressBar.style.width = `${width}%`;
-                    progressBar.style.backgroundColor = config.color || '#43e97b';
+                            const sectionDuration = sectionEndMinutes - sectionStartMinutes;
+                            const relativeStart = segmentStartMinutes - sectionStartMinutes;
+                            const relativeEnd = segmentEndMinutes - sectionStartMinutes;
 
-                    const tooltip = document.createElement('div');
-                    tooltip.className = 'timeline-marker-tooltip';
-                    const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
-                    let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
-                    tooltipText += `\nDuration: ${duration} minutes`;
-                    if (event.user_name) {
-                        tooltipText += `\n${event.user_name}`;
-                    }
-                    tooltip.textContent = tooltipText;
-                    tooltip.style.whiteSpace = 'pre-line';
+                            const startPosition = (relativeStart / sectionDuration) * 100;
+                            const endPosition = (relativeEnd / sectionDuration) * 100;
+                            const width = endPosition - startPosition;
 
-                    progressBar.appendChild(tooltip);
+                            if (width > 0) {
+                                const progressBar = document.createElement('div');
+                                progressBar.className = 'timeline-progress-bar sleep';
+                                progressBar.style.left = `${startPosition}%`;
+                                progressBar.style.width = `${width}%`;
+                                progressBar.style.backgroundColor = config.color || '#43e97b';
 
-                    progressBar.addEventListener('click', (eventObj) => {
-                        eventObj.stopPropagation();
-                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
-                            this.activeTimelineMarker.classList.remove('show-tooltip');
+                                const tooltip = document.createElement('div');
+                                tooltip.className = 'timeline-marker-tooltip';
+                                const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
+                                let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
+                                tooltipText += `\nDuration: ${duration} minutes`;
+                                if (event.user_name) {
+                                    tooltipText += `\n${event.user_name}`;
+                                }
+                                tooltip.textContent = tooltipText;
+                                tooltip.style.whiteSpace = 'pre-line';
+
+                                progressBar.appendChild(tooltip);
+
+                                progressBar.addEventListener('click', (eventObj) => {
+                                    eventObj.stopPropagation();
+                                    if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                                        this.activeTimelineMarker.classList.remove('show-tooltip');
+                                    }
+                                    progressBar.classList.toggle('show-tooltip');
+                                    this.activeTimelineMarker = progressBar.classList.contains('show-tooltip') ? progressBar : null;
+                                });
+
+                                progressBar.addEventListener('touchstart', (eventObj) => {
+                                    eventObj.stopPropagation();
+                                    if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
+                                        this.activeTimelineMarker.classList.remove('show-tooltip');
+                                    }
+                                    progressBar.classList.add('show-tooltip');
+                                    this.activeTimelineMarker = progressBar;
+                                }, { passive: true });
+
+                                const targetTrack = sectionTracks[`${section.startHour}-${section.endHour}`];
+                                if(targetTrack) {
+                                    targetTrack.appendChild(progressBar);
+                                }
+                            }
                         }
-                        progressBar.classList.toggle('show-tooltip');
-                        this.activeTimelineMarker = progressBar.classList.contains('show-tooltip') ? progressBar : null;
                     });
-
-                    progressBar.addEventListener('touchstart', (eventObj) => {
-                        eventObj.stopPropagation();
-                        if (this.activeTimelineMarker && this.activeTimelineMarker !== progressBar) {
-                            this.activeTimelineMarker.classList.remove('show-tooltip');
-                        }
-                        progressBar.classList.add('show-tooltip');
-                        this.activeTimelineMarker = progressBar;
-                    }, { passive: true });
-
-                    targetTrack.appendChild(progressBar);
                 } else {
                     // Create marker for other event types
                     const marker = document.createElement('div');
