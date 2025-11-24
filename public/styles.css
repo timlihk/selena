@@ -1179,6 +1179,17 @@ button.loading::after {
     background: #43e97b;
 }
 
+.timeline-progress-bar.sleep.ongoing {
+    background: linear-gradient(90deg, #43e97b, #38b2ac);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
 .timeline-progress-bar .timeline-marker-tooltip {
     position: absolute;
     bottom: calc(100% + 12px);

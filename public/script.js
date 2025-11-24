@@ -1992,7 +1992,7 @@ class BabyTracker {
                 return;
             }
 
-            // Create three lanes: Sleep, Events, and Empty for spacing
+            // Create four lanes: Sleep, Milk, Diapers/Bath, and Empty for spacing
             const sleepLaneDiv = document.createElement('div');
             sleepLaneDiv.className = 'timeline-lane';
 
@@ -2004,16 +2004,27 @@ class BabyTracker {
             const sleepTrackDiv = document.createElement('div');
             sleepTrackDiv.className = 'timeline-lane-track';
 
-            const eventsLaneDiv = document.createElement('div');
-            eventsLaneDiv.className = 'timeline-lane';
+            const milkLaneDiv = document.createElement('div');
+            milkLaneDiv.className = 'timeline-lane';
 
-            const eventsLabelDiv = document.createElement('div');
-            eventsLabelDiv.className = 'timeline-lane-label';
-            eventsLabelDiv.innerHTML = '<span>📊</span>';
-            eventsLaneDiv.appendChild(eventsLabelDiv);
+            const milkLabelDiv = document.createElement('div');
+            milkLabelDiv.className = 'timeline-lane-label';
+            milkLabelDiv.innerHTML = '<span>🍼</span>';
+            milkLaneDiv.appendChild(milkLabelDiv);
 
-            const eventsTrackDiv = document.createElement('div');
-            eventsTrackDiv.className = 'timeline-lane-track';
+            const milkTrackDiv = document.createElement('div');
+            milkTrackDiv.className = 'timeline-lane-track';
+
+            const diapersBathLaneDiv = document.createElement('div');
+            diapersBathLaneDiv.className = 'timeline-lane';
+
+            const diapersBathLabelDiv = document.createElement('div');
+            diapersBathLabelDiv.className = 'timeline-lane-label';
+            diapersBathLabelDiv.innerHTML = '<span>💩🛁</span>';
+            diapersBathLaneDiv.appendChild(diapersBathLabelDiv);
+
+            const diapersBathTrackDiv = document.createElement('div');
+            diapersBathTrackDiv.className = 'timeline-lane-track';
 
             // Empty lane for visual separation
             const emptyLaneDiv = document.createElement('div');
@@ -2037,10 +2048,10 @@ class BabyTracker {
                 const normalizedType = event.type === 'poo' ? 'diaper' : event.type;
                 const config = this.EVENT_CONFIG[normalizedType] || {};
 
-                if (normalizedType === 'sleep' && event.sleep_start_time && event.sleep_end_time) {
-                    // Create sleep progress bar for sleep lane
+                if (normalizedType === 'sleep') {
+                    // Handle both completed and ongoing sleep sessions
                     const sleepStart = new Date(event.sleep_start_time);
-                    const sleepEnd = new Date(event.sleep_end_time);
+                    const sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date(); // Use current time for ongoing sessions
                     const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
                     const sleepEndInTz = new Date(sleepEnd.toLocaleString('en-US', { timeZone: tz }));
 
@@ -2057,13 +2068,29 @@ class BabyTracker {
                     progressBar.style.width = `${width}%`;
                     progressBar.style.backgroundColor = config.color || '#43e97b';
 
+                    // Add ongoing class for incomplete sleep sessions
+                    if (!event.sleep_end_time) {
+                        progressBar.classList.add('ongoing');
+                        progressBar.style.background = 'linear-gradient(90deg, #43e97b, #38b2ac)';
+                    }
+
                     const tooltip = document.createElement('div');
                     tooltip.className = 'timeline-marker-tooltip';
                     const duration = event.amount || Math.round((sleepEnd - sleepStart) / (1000 * 60));
-                    let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)} to ${this.formatDisplayTime(sleepEnd)}`;
+                    let tooltipText = `${config.icon || '😴'} Sleep - ${this.formatDisplayTime(sleepStart)}`;
+
+                    if (event.sleep_end_time) {
+                        tooltipText += ` to ${this.formatDisplayTime(sleepEnd)}`;
+                    } else {
+                        tooltipText += ` to now (ongoing)`;
+                    }
+
                     tooltipText += `\nDuration: ${duration} minutes`;
                     if (event.user_name) {
                         tooltipText += `\n${event.user_name}`;
+                    }
+                    if (!event.sleep_end_time) {
+                        tooltipText += `\n🔄 Currently sleeping`;
                     }
                     tooltip.textContent = tooltipText;
                     tooltip.style.whiteSpace = 'pre-line';
@@ -2090,7 +2117,7 @@ class BabyTracker {
 
                     sleepTrackDiv.appendChild(progressBar);
                 } else if (['milk', 'diaper', 'bath'].includes(normalizedType)) {
-                    // Create marker for other event types in events lane
+                    // Create marker for other event types and route to appropriate lanes
                     const marker = document.createElement('div');
                     marker.className = 'timeline-marker timeline-icon-marker';
                     marker.style.left = `${leftPosition}%`;
@@ -2160,17 +2187,24 @@ class BabyTracker {
                         this.activeTimelineMarker = marker;
                     }, { passive: true });
 
-                    eventsTrackDiv.appendChild(marker);
+                    // Route to appropriate lane
+                    if (normalizedType === 'milk') {
+                        milkTrackDiv.appendChild(marker);
+                    } else if (['diaper', 'bath'].includes(normalizedType)) {
+                        diapersBathTrackDiv.appendChild(marker);
+                    }
                 }
             });
 
             // Assemble the lanes
             sleepLaneDiv.appendChild(sleepTrackDiv);
-            eventsLaneDiv.appendChild(eventsTrackDiv);
+            milkLaneDiv.appendChild(milkTrackDiv);
+            diapersBathLaneDiv.appendChild(diapersBathTrackDiv);
             emptyLaneDiv.appendChild(emptyTrackDiv);
 
             eventsContainer.appendChild(sleepLaneDiv);
-            eventsContainer.appendChild(eventsLaneDiv);
+            eventsContainer.appendChild(milkLaneDiv);
+            eventsContainer.appendChild(diapersBathLaneDiv);
             eventsContainer.appendChild(emptyLaneDiv);
         } catch (error) {
             console.error('Error rendering timeline:', error);
