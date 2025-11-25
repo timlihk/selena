@@ -174,19 +174,36 @@ async function testConnection() {
 async function withTransaction(callback) {
   if (useMemoryStore) {
     // Enhanced memory store transaction simulation with actual data mutation
-    let transactionState = 'active';
+    // Snapshot memoryStore at BEGIN for rollback support
+    let transactionState = 'idle';
+    let memorySnapshot = null;
+    let memoryIdCounterSnapshot = null;
+
     const transactionClient = {
       query: async (text, params = []) => {
         const normalizedText = text.trim().toUpperCase();
 
         // Handle transaction control statements
         if (normalizedText === 'BEGIN') {
+          // Take a deep snapshot of current state for potential rollback
+          memorySnapshot = memoryStore.map(event => ({ ...event }));
+          memoryIdCounterSnapshot = memoryIdCounter;
           transactionState = 'active';
           return { rows: [] };
         } else if (normalizedText === 'COMMIT') {
+          // Clear snapshot - changes are permanent
+          memorySnapshot = null;
+          memoryIdCounterSnapshot = null;
           transactionState = 'committed';
           return { rows: [] };
         } else if (normalizedText === 'ROLLBACK') {
+          // Restore snapshot - revert all changes made during transaction
+          if (memorySnapshot !== null) {
+            memoryStore = memorySnapshot;
+            memoryIdCounter = memoryIdCounterSnapshot;
+          }
+          memorySnapshot = null;
+          memoryIdCounterSnapshot = null;
           transactionState = 'rolled_back';
           return { rows: [] };
         }

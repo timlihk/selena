@@ -886,30 +886,32 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
   }
 });
 
-// Graceful shutdown handling
+// Server instance - only used when running as main module
 let server = null;
 
-function gracefulShutdown(signal) {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
-  if (server) {
-    server.close(() => {
-      console.log('Server closed.');
-      process.exit(0);
-    });
-    // Force close after 10 seconds
-    setTimeout(() => {
-      console.log('Forcing shutdown...');
-      process.exit(0);
-    }, 10000);
-  } else {
-    process.exit(0);
-  }
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
 if (require.main === module) {
+  // Graceful shutdown handling - only register when running as main module
+  // (not when imported by tests or other modules)
+  function gracefulShutdown(signal) {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    if (server) {
+      server.close(() => {
+        console.log('Server closed.');
+        process.exit(0);
+      });
+      // Force close after 10 seconds
+      setTimeout(() => {
+        console.log('Forcing shutdown...');
+        process.exit(0);
+      }, 10000);
+    } else {
+      process.exit(0);
+    }
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   startServer();
 }
 
