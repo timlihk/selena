@@ -1357,7 +1357,8 @@ button.loading::after {
 
     .timeline-lane-track {
         height: 32px;
-        margin-right: 16px;
+        margin: 0 16px; /* Symmetric margins to match hours right margin */
+        padding: 0 16px; /* Symmetric padding */
     }
 
     .timeline-marker {
@@ -1518,17 +1519,15 @@ button.loading::after {
     }
 
     .timeline-lane-track {
-        margin-right: 12px;
+        margin: 0 12px; /* Symmetric margins to match hours right margin */
+        padding: 0 12px; /* Symmetric padding */
+        height: 32px;
+        width: auto;
     }
 
     .timeline-lane-label {
         padding-left: 0;
         font-size: 0.85rem;
-    }
-
-    .timeline-lane-track {
-        height: 32px;
-        width: 100%;
     }
 
     .timeline-marker {
