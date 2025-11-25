@@ -173,7 +173,7 @@ async function testConnection() {
 // Execute callback within a database transaction
 async function withTransaction(callback) {
   if (useMemoryStore) {
-    // Enhanced memory store transaction simulation
+    // Enhanced memory store transaction simulation with actual data mutation
     let transactionState = 'active';
     const transactionClient = {
       query: async (text, params = []) => {
@@ -196,16 +196,66 @@ async function withTransaction(callback) {
           throw new Error(`Transaction is ${transactionState}, cannot execute query`);
         }
 
-        // Execute the actual query using the regular pool or memory store
-        if (pool) {
-          return pool.query(text, params);
-        } else {
-          // For memory store without pool, simulate query execution
-          if (text.trim().toUpperCase().startsWith('SELECT')) {
-            return { rows: [{ test: 1 }] };
+        // Handle UPDATE queries for memory store
+        if (normalizedText.startsWith('UPDATE BABY_EVENTS')) {
+          // Parse UPDATE baby_events SET ... WHERE id = $N RETURNING *
+          // Extract the id from params (last param in WHERE id = $N pattern)
+          const whereIdMatch = text.match(/WHERE\s+id\s*=\s*\$(\d+)/i);
+          if (whereIdMatch) {
+            const idParamIndex = parseInt(whereIdMatch[1], 10) - 1;
+            const eventId = params[idParamIndex];
+            const index = findMemoryEventIndexById(eventId);
+
+            if (index === -1) {
+              return { rows: [], rowCount: 0 };
+            }
+
+            // Parse SET clause to extract field updates
+            const setMatch = text.match(/SET\s+(.+?)\s+WHERE/is);
+            if (setMatch) {
+              const updates = {};
+              const setClause = setMatch[1];
+              // Match patterns like "amount = $1" or "sleep_end_time = $2"
+              const fieldMatches = setClause.matchAll(/(\w+)\s*=\s*\$(\d+)/gi);
+              for (const match of fieldMatches) {
+                const fieldName = match[1].toLowerCase();
+                const paramIndex = parseInt(match[2], 10) - 1;
+                let value = params[paramIndex];
+                // Normalize timestamps
+                if (fieldName.includes('time') && value) {
+                  value = ensureMemoryTimestamp(value);
+                }
+                updates[fieldName] = value;
+              }
+
+              const updatedEvent = updateMemoryEvent(index, updates);
+              return { rows: [updatedEvent], rowCount: 1 };
+            }
+          }
+          return { rows: [], rowCount: 0 };
+        }
+
+        // Handle SELECT queries for memory store
+        if (normalizedText.startsWith('SELECT')) {
+          // Handle simple SELECT 1 style queries for testing
+          if (normalizedText.match(/^SELECT\s+\d+/)) {
+            const numMatch = text.match(/SELECT\s+(\d+)\s+(?:AS\s+(\w+))?/i);
+            if (numMatch) {
+              const value = parseInt(numMatch[1], 10);
+              const alias = numMatch[2] || 'value';
+              return { rows: [{ [alias]: value }] };
+            }
+          }
+          // For FOR UPDATE queries on sleep events, delegate to Event methods
+          if (normalizedText.includes('FOR UPDATE')) {
+            // This is handled by Event.getLastIncompleteSleepForUpdate
+            return { rows: [] };
           }
           return { rows: [] };
         }
+
+        // Default: return empty for other query types
+        return { rows: [] };
       }
     };
 

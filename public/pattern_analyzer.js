@@ -16,7 +16,8 @@ class PatternAnalyzer {
         const timestamps = this.events.map(e => new Date(e.timestamp).getTime());
         const oldest = Math.min(...timestamps);
         const newest = Math.max(...timestamps);
-        return Math.ceil((newest - oldest) / (1000 * 60 * 60 * 24));
+        // Add 1 to count both first and last day (inclusive range)
+        return Math.floor((newest - oldest) / (1000 * 60 * 60 * 24)) + 1;
     }
 
     analyzeFeedingToSleep() {
