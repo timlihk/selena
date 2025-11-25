@@ -48,6 +48,9 @@ function validateTimestamp(timestamp) {
   maxPastDate.setDate(maxPastDate.getDate() - TIMESTAMP_MAX_PAST_DAYS);
 
   const eventDate = new Date(timestamp);
+  if (Number.isNaN(eventDate.getTime())) {
+    throw new Error('Invalid timestamp format');
+  }
   if (eventDate > new Date()) {
     throw new Error('Event timestamp cannot be in the future');
   }

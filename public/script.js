@@ -1012,8 +1012,8 @@ class BabyTracker {
         const container = document.getElementById('adaptiveCoach');
         if (!container) return;
 
-        // Create analyzer and generate insights
-        const analyzer = new PatternAnalyzer(this.events || [], this.homeTimezone);
+        // Create analyzer and generate insights using full dataset (not filtered view)
+        const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
         const insights = analyzer.generateInsights();
 
         if (!insights || insights.length === 0) {
@@ -2037,6 +2037,11 @@ class BabyTracker {
                 const config = this.EVENT_CONFIG[normalizedType] || {};
 
                 if (normalizedType === 'sleep') {
+                    // Guard against legacy records with null sleep_start_time
+                    if (!event.sleep_start_time) {
+                        // Skip legacy sleep events without proper start time
+                        return;
+                    }
                     // Handle both completed and ongoing sleep sessions
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date(); // Use current time for ongoing sessions
