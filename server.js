@@ -744,7 +744,7 @@ async function startServer() {
 
     // Start server immediately (don't wait for DB init to complete)
     // This prevents Railway timeout during startup
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       console.log(`🚀 Baby Tracker server running on port ${PORT}`);
       console.log(`📱 Open http://localhost:${PORT} to view the app`);
       if (!process.env.DATABASE_URL) {
@@ -885,6 +885,29 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
     res.status(500).json({ error: 'Failed to create confirmed sleep event' });
   }
 });
+
+// Graceful shutdown handling
+let server = null;
+
+function gracefulShutdown(signal) {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  if (server) {
+    server.close(() => {
+      console.log('Server closed.');
+      process.exit(0);
+    });
+    // Force close after 10 seconds
+    setTimeout(() => {
+      console.log('Forcing shutdown...');
+      process.exit(0);
+    }, 10000);
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 if (require.main === module) {
   startServer();
