@@ -38,7 +38,8 @@ class PatternAnalyzer {
                 return hoursDiff > 0 && hoursDiff <= 4;
             });
 
-            if (followingSleep) {
+            // Only include if sleep has a valid duration
+            if (followingSleep && followingSleep.amount != null) {
                 const hoursDiff = (new Date(followingSleep.timestamp) - milkTime) / (1000 * 60 * 60);
                 correlations.push({
                     hoursFromFeedToSleep: hoursDiff,
@@ -57,10 +58,12 @@ class PatternAnalyzer {
             byHour[hour].push(c.sleepDuration);
         });
 
+        // Require at least 5 samples per hour for statistical significance
+        const minSamplesPerHour = 5;
         let bestHour = null;
         let bestAvgSleep = 0;
         for (const [hour, sleeps] of Object.entries(byHour)) {
-            if (sleeps.length >= 2) {
+            if (sleeps.length >= minSamplesPerHour) {
                 const avgSleep = sleeps.reduce((sum, s) => sum + s, 0) / sleeps.length;
                 if (avgSleep > bestAvgSleep) {
                     bestAvgSleep = avgSleep;
@@ -69,16 +72,16 @@ class PatternAnalyzer {
             }
         }
 
-        if (bestHour && bestAvgSleep > 60) {
+        if (bestHour !== null && bestAvgSleep > 60) {
             const allSleeps = correlations.map(c => c.sleepDuration);
-            const minSleep = Math.min(...allSleeps);
-            const improvement = bestAvgSleep - minSleep;
+            const avgAllSleep = allSleeps.reduce((sum, s) => sum + s, 0) / allSleeps.length;
+            const improvement = bestAvgSleep - avgAllSleep;
 
             if (improvement > 15) {
                 insights.push({
                     type: 'feeding_to_sleep',
                     title: 'Optimal Feeding Window Found',
-                    description: `Based on ${correlations.length} feeding sessions, feeding around ${bestHour}:00 leads to ${Math.round(improvement)} minutes longer sleep.`,
+                    description: `Based on ${correlations.length} feeding sessions, feeding around ${bestHour}:00 leads to ${Math.round(improvement)} minutes more sleep than average.`,
                     recommendation: `Try feeding around ${bestHour}:00 for better sleep sessions.`,
                     confidence: Math.min(correlations.length / 10, 0.9),
                     dataPoints: correlations.length
@@ -106,7 +109,7 @@ class PatternAnalyzer {
                 const wakeEnd = new Date(currSleep.timestamp);
                 const wakeWindowHours = (wakeEnd - wakeStart) / (1000 * 60 * 60);
 
-                if (wakeWindowHours >= 1 && wakeWindowHours <= 6) {
+                if (wakeWindowHours >= 1 && wakeWindowHours <= 6 && currSleep.amount != null) {
                     wakeData.push({
                         wakeWindow: wakeWindowHours,
                         followingSleepDuration: currSleep.amount
