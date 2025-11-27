@@ -1109,6 +1109,23 @@ class BabyTracker {
         const insightsHtml = insights.slice(0, 3).map(insight => {
             const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
                                    insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
+            const peakLabel = insight.stats?.hour !== undefined
+                ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
+                : insight.stats?.windowMinutes !== undefined
+                    ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
+                    : '';
+            const statsDetails = insight.stats ? `
+                <p class="insight-data">
+                    📊 ${insight.stats.sampleCount} samples,
+                    avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
+                    (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
+                    z=${insight.stats.zScore})
+                </p>
+                ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
+            ` : '';
+            const dataPointsLine = !insight.stats && insight.dataPoints > 0
+                ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
+                : '';
             return `
                 <div class="insights-card coach-insight ${insight.type}">
                     <div class="insight-header">
@@ -1117,7 +1134,7 @@ class BabyTracker {
                     </div>
                     <p class="insight-description">${insight.description}</p>
                     ${insight.recommendation ? `<p class="insight-recommendation">💡 ${insight.recommendation}</p>` : ''}
-                    ${insight.dataPoints > 0 ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>` : ''}
+                    ${statsDetails || dataPointsLine}
                 </div>
             `;
         }).join('');

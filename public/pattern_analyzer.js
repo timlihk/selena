@@ -21,13 +21,25 @@ class PatternAnalyzer {
     }
 
     analyzeFeedingToSleep() {
+        const MIN_GLOBAL_CORRELATIONS = 15;
+        const MIN_SAMPLES_PER_HOUR = 5;
+        const MIN_SLEEP_DURATION_MINUTES = 10;
+        const MIN_IMPROVEMENT_MINUTES = 15;
+        const MIN_Z_SCORE = 0.5;
         const insights = [];
-        const sleepEvents = this.events.filter(e => e.type === 'sleep');
+        const rawSleepEvents = this.events.filter(e => e.type === 'sleep');
         const milkEvents = this.events.filter(e => e.type === 'milk');
 
-        if (sleepEvents.length < 5 || milkEvents.length < 5) {
+        if (rawSleepEvents.length < MIN_GLOBAL_CORRELATIONS || milkEvents.length < MIN_GLOBAL_CORRELATIONS) {
             return insights;
         }
+
+        const sleepEvents = rawSleepEvents.filter(event =>
+            Number.isFinite(event.amount) &&
+            event.amount >= MIN_SLEEP_DURATION_MINUTES &&
+            event.sleep_start_time &&
+            event.sleep_end_time
+        );
 
         const correlations = [];
         for (const milk of milkEvents) {
@@ -38,8 +50,7 @@ class PatternAnalyzer {
                 return hoursDiff > 0 && hoursDiff <= 4;
             });
 
-            // Only include if sleep has a valid duration
-            if (followingSleep && followingSleep.amount != null) {
+            if (followingSleep) {
                 const hoursDiff = (new Date(followingSleep.timestamp) - milkTime) / (1000 * 60 * 60);
                 correlations.push({
                     hoursFromFeedToSleep: hoursDiff,
@@ -49,7 +60,9 @@ class PatternAnalyzer {
             }
         }
 
-        if (correlations.length < 3) return insights;
+        if (correlations.length < MIN_GLOBAL_CORRELATIONS) {
+            return insights;
+        }
 
         const byHour = {};
         correlations.forEach(c => {
@@ -58,99 +71,179 @@ class PatternAnalyzer {
             byHour[hour].push(c.sleepDuration);
         });
 
-        // Require at least 5 samples per hour for statistical significance
-        const minSamplesPerHour = 5;
         let bestHour = null;
         let bestAvgSleep = 0;
-        for (const [hour, sleeps] of Object.entries(byHour)) {
-            if (sleeps.length >= minSamplesPerHour) {
+        Object.entries(byHour).forEach(([hour, sleeps]) => {
+            if (sleeps.length >= MIN_SAMPLES_PER_HOUR) {
                 const avgSleep = sleeps.reduce((sum, s) => sum + s, 0) / sleeps.length;
                 if (avgSleep > bestAvgSleep) {
                     bestAvgSleep = avgSleep;
-                    bestHour = parseInt(hour);
+                    bestHour = parseInt(hour, 10);
                 }
             }
-        }
+        });
+
+        const allSleeps = correlations.map(c => c.sleepDuration);
+        const avgAllSleep = allSleeps.reduce((sum, s) => sum + s, 0) / allSleeps.length;
+        const variance = allSleeps.reduce((sum, duration) => sum + Math.pow(duration - avgAllSleep, 2), 0) / allSleeps.length;
+        const stdDeviation = Math.sqrt(variance);
 
         if (bestHour !== null && bestAvgSleep > 60) {
-            const allSleeps = correlations.map(c => c.sleepDuration);
-            const avgAllSleep = allSleeps.reduce((sum, s) => sum + s, 0) / allSleeps.length;
+            const bestDurations = byHour[bestHour];
             const improvement = bestAvgSleep - avgAllSleep;
+            const zScore = stdDeviation > 0 ? improvement / stdDeviation : 0;
 
-            if (improvement > 15) {
+            if (improvement > MIN_IMPROVEMENT_MINUTES && zScore >= MIN_Z_SCORE) {
+                // Blend z-score and sample count for confidence
+                // zFactor: caps at 1.0 when z-score reaches 3.0
+                // sampleFactor: caps at 1.0 when samples reach 10
+                const zFactor = Math.min(zScore / 3, 1);
+                const sampleFactor = Math.min(bestDurations.length / 10, 1);
+                const confidence = Math.min(zFactor * sampleFactor, 0.9);
+
                 insights.push({
                     type: 'feeding_to_sleep',
                     title: 'Optimal Feeding Window Found',
-                    description: `Based on ${correlations.length} feeding sessions, feeding around ${bestHour}:00 leads to ${Math.round(improvement)} minutes more sleep than average.`,
+                    description: `Based on ${correlations.length} feeding sessions, feeding around ${bestHour}:00 leads to ~${Math.round(improvement)} minutes more sleep than average.`,
                     recommendation: `Try feeding around ${bestHour}:00 for better sleep sessions.`,
-                    confidence: Math.min(correlations.length / 10, 0.9),
-                    dataPoints: correlations.length
+                    confidence: confidence,
+                    dataPoints: bestDurations.length,
+                    stats: {
+                        hour: bestHour,
+                        sampleCount: bestDurations.length,
+                        averageSleepMinutes: Math.round(bestAvgSleep),
+                        overallAverageMinutes: Math.round(avgAllSleep),
+                        improvementMinutes: Math.round(improvement),
+                        zScore: Number(zScore.toFixed(2)),
+                        stdDeviationMinutes: Math.round(stdDeviation || 0)
+                    }
                 });
             }
+        }
+
+        if (insights.length === 0) {
+            insights.push({
+                type: 'feeding_to_sleep_no_signal',
+                title: 'No strong feeding window yet',
+                description: `We analyzed ${correlations.length} feeding sessions but no hour stands out yet. Keep logging to help the coach learn.`,
+                recommendation: '',
+                confidence: 0,
+                dataPoints: correlations.length
+            });
         }
 
         return insights;
     }
 
     analyzeWakeWindows() {
+        const MIN_DATA_POINTS = 15;
+        const MIN_SAMPLES_PER_WINDOW = 5;
+        const MIN_SLEEP_DURATION_MINUTES = 10;
+        const MIN_IMPROVEMENT_MINUTES = 10;
+        const MIN_Z_SCORE = 0.5;
+        const WINDOW_SIZE_HOURS = 0.5;
+
         const insights = [];
-        const sleepEvents = this.events.filter(e => e.type === 'sleep')
+        const rawSleepEvents = this.events.filter(e => e.type === 'sleep')
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        if (sleepEvents.length < 5) return insights;
+        if (rawSleepEvents.length < MIN_DATA_POINTS) return insights;
+
+        // Filter for valid sleep events with complete data
+        const sleepEvents = rawSleepEvents.filter(event =>
+            Number.isFinite(event.amount) &&
+            event.amount >= MIN_SLEEP_DURATION_MINUTES &&
+            event.sleep_start_time &&
+            event.sleep_end_time
+        );
 
         const wakeData = [];
         for (let i = 1; i < sleepEvents.length; i++) {
             const prevSleep = sleepEvents[i - 1];
             const currSleep = sleepEvents[i];
 
-            if (prevSleep.sleep_end_time) {
-                const wakeStart = new Date(prevSleep.sleep_end_time);
-                const wakeEnd = new Date(currSleep.timestamp);
-                const wakeWindowHours = (wakeEnd - wakeStart) / (1000 * 60 * 60);
+            const wakeStart = new Date(prevSleep.sleep_end_time);
+            const wakeEnd = new Date(currSleep.timestamp);
+            const wakeWindowHours = (wakeEnd - wakeStart) / (1000 * 60 * 60);
 
-                if (wakeWindowHours >= 1 && wakeWindowHours <= 6 && currSleep.amount != null) {
-                    wakeData.push({
-                        wakeWindow: wakeWindowHours,
-                        followingSleepDuration: currSleep.amount
-                    });
-                }
+            if (wakeWindowHours >= 0.5 && wakeWindowHours <= 6) {
+                wakeData.push({
+                    wakeWindow: wakeWindowHours,
+                    followingSleepDuration: currSleep.amount
+                });
             }
         }
 
-        if (wakeData.length < 4) return insights;
+        if (wakeData.length < MIN_DATA_POINTS) return insights;
+
+        // Group by 30-minute windows
+        const byWindow = {};
+        wakeData.forEach(w => {
+            const windowKey = Math.floor(w.wakeWindow / WINDOW_SIZE_HOURS) * WINDOW_SIZE_HOURS;
+            if (!byWindow[windowKey]) byWindow[windowKey] = [];
+            byWindow[windowKey].push(w.followingSleepDuration);
+        });
 
         let bestWindow = null;
-        let bestSleepDuration = 0;
-        const windowSize = 0.5;
-
-        for (let start = 1; start <= 5; start += windowSize) {
-            const end = start + windowSize;
-            const inRange = wakeData.filter(w => w.wakeWindow >= start && w.wakeWindow < end);
-
-            if (inRange.length >= 3) {
-                const avgSleep = inRange.reduce((sum, w) => sum + w.followingSleepDuration, 0) / inRange.length;
-                if (avgSleep > bestSleepDuration) {
-                    bestSleepDuration = avgSleep;
-                    bestWindow = start + windowSize / 2;
+        let bestAvgSleep = 0;
+        let bestWindowData = [];
+        Object.entries(byWindow).forEach(([window, sleeps]) => {
+            if (sleeps.length >= MIN_SAMPLES_PER_WINDOW) {
+                const avgSleep = sleeps.reduce((sum, s) => sum + s, 0) / sleeps.length;
+                if (avgSleep > bestAvgSleep) {
+                    bestAvgSleep = avgSleep;
+                    bestWindow = parseFloat(window);
+                    bestWindowData = sleeps;
                 }
             }
-        }
+        });
 
-        if (bestWindow && bestSleepDuration > 60) {
-            const avgAll = wakeData.reduce((sum, w) => sum + w.followingSleepDuration, 0) / wakeData.length;
-            const improvement = bestSleepDuration - avgAll;
+        // Calculate overall stats
+        const allSleeps = wakeData.map(w => w.followingSleepDuration);
+        const avgAllSleep = allSleeps.reduce((sum, s) => sum + s, 0) / allSleeps.length;
+        const variance = allSleeps.reduce((sum, d) => sum + Math.pow(d - avgAllSleep, 2), 0) / allSleeps.length;
+        const stdDeviation = Math.sqrt(variance);
 
-            if (improvement > 10) {
+        if (bestWindow !== null && bestAvgSleep > 60) {
+            const improvement = bestAvgSleep - avgAllSleep;
+            const zScore = stdDeviation > 0 ? improvement / stdDeviation : 0;
+
+            if (improvement > MIN_IMPROVEMENT_MINUTES && zScore >= MIN_Z_SCORE) {
+                // Blend z-score and sample count for confidence
+                const zFactor = Math.min(zScore / 3, 1);
+                const sampleFactor = Math.min(bestWindowData.length / 10, 1);
+                const confidence = Math.min(zFactor * sampleFactor, 0.9);
+
+                const windowMinutes = Math.round((bestWindow + WINDOW_SIZE_HOURS / 2) * 60);
                 insights.push({
                     type: 'wake_window',
                     title: 'Ideal Wake Window Found',
-                    description: `${Math.round(bestWindow * 60)}-minute wake windows lead to ${Math.round(improvement)} minutes longer sleep on average.`,
-                    recommendation: `Try keeping baby awake for ~${Math.round(bestWindow * 60)} minutes between naps.`,
-                    confidence: Math.min(wakeData.length / 8, 0.85),
-                    dataPoints: wakeData.length
+                    description: `Based on ${wakeData.length} sleep transitions, ~${windowMinutes}-minute wake windows lead to ${Math.round(improvement)} minutes more sleep than average.`,
+                    recommendation: `Try keeping baby awake for ~${windowMinutes} minutes between naps.`,
+                    confidence: confidence,
+                    dataPoints: bestWindowData.length,
+                    stats: {
+                        windowMinutes: windowMinutes,
+                        sampleCount: bestWindowData.length,
+                        averageSleepMinutes: Math.round(bestAvgSleep),
+                        overallAverageMinutes: Math.round(avgAllSleep),
+                        improvementMinutes: Math.round(improvement),
+                        zScore: Number(zScore.toFixed(2)),
+                        stdDeviationMinutes: Math.round(stdDeviation || 0)
+                    }
                 });
             }
+        }
+
+        if (insights.length === 0 && wakeData.length >= MIN_DATA_POINTS) {
+            insights.push({
+                type: 'wake_window_no_signal',
+                title: 'No strong wake window yet',
+                description: `We analyzed ${wakeData.length} sleep transitions but no wake window stands out yet. Keep logging to help the coach learn.`,
+                recommendation: '',
+                confidence: 0,
+                dataPoints: wakeData.length
+            });
         }
 
         return insights;
