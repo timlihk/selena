@@ -306,14 +306,46 @@ app.post('/api/events', async (req, res) => {
 
     if (type === 'sleep') {
       if (sleepSubType === 'fall_asleep') {
-        // Validate that user doesn't already have an incomplete sleep session
+        // Create fall_asleep within a transaction to prevent race conditions
         try {
-          await canStartNewSleep(userName);
-        } catch (validationError) {
-          return res.status(400).json({ error: validationError.message });
-        }
+          const result = await withTransaction(async (client) => {
+            // Check for existing incomplete sleep with FOR UPDATE lock
+            const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(userName, client);
 
-        sleepStart = eventTimestamp || new Date().toISOString();
+            if (incompleteSleep) {
+              return {
+                success: false,
+                error: `Cannot start new sleep session. User ${userName} already has an incomplete sleep session (started at ${incompleteSleep.sleep_start_time})`
+              };
+            }
+
+            sleepStart = eventTimestamp || new Date().toISOString();
+
+            // Create the event within the same transaction
+            const event = await Event.createWithClient(
+              client,
+              type,
+              null, // amount
+              userName,
+              sleepStart,
+              null, // sleepEnd
+              null, // subtype
+              eventTimestamp
+            );
+
+            return { success: true, event };
+          });
+
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+
+          // Return the created event
+          return res.status(201).json(result.event);
+        } catch (error) {
+          console.error('Failed to create fall_asleep event:', error);
+          return res.status(500).json({ error: 'Failed to create sleep session' });
+        }
       } else if (sleepSubType === 'wake_up') {
         sleepEnd = eventTimestamp || new Date().toISOString();
 
@@ -803,14 +835,43 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
     let sleepEnd = null;
 
     if (sleepSubType === 'fall_asleep') {
-      // Validate that user doesn't already have an incomplete sleep session
+      // Create fall_asleep within a transaction to prevent race conditions
       try {
-        await canStartNewSleep(userName);
-      } catch (validationError) {
-        return res.status(400).json({ error: validationError.message });
-      }
+        const result = await withTransaction(async (client) => {
+          const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(userName, client);
 
-      sleepStart = timestamp || new Date().toISOString();
+          if (incompleteSleep) {
+            return {
+              success: false,
+              error: `Cannot start new sleep session. User ${userName} already has an incomplete sleep session (started at ${incompleteSleep.sleep_start_time})`
+            };
+          }
+
+          sleepStart = timestamp || new Date().toISOString();
+
+          const event = await Event.createWithClient(
+            client,
+            'sleep',
+            null,
+            userName,
+            sleepStart,
+            null,
+            null,
+            timestamp
+          );
+
+          return { success: true, event };
+        });
+
+        if (!result.success) {
+          return res.status(400).json({ error: result.error });
+        }
+
+        return res.status(201).json(result.event);
+      } catch (error) {
+        console.error('Failed to create confirmed fall_asleep event:', error);
+        return res.status(500).json({ error: 'Failed to create sleep session', details: error.message });
+      }
     } else if (sleepSubType === 'wake_up') {
       sleepEnd = timestamp || new Date().toISOString();
 

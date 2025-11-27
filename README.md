@@ -1,381 +1,67 @@
-# 👶 Baby Event Tracker
+# Baby Tracker
 
-A full-stack web application for tracking newborn baby activities including milk feeds, diaper changes, and bath times. Built with Node.js, Express, PostgreSQL, and vanilla JavaScript.
+A simple web application to track newborn baby events including feeding, sleep, diapers, and baths.
 
-**Live Demo**: [https://selena.mangrove-hk.org/](https://selena.mangrove-hk.org/)
+## Features
 
-## ✨ Features
+- **Event Tracking**: Log milk feedings, sleep sessions, diaper changes, and bath times
+- **Multi-user Support**: Track events by caregiver name
+- **Sleep Management**: Track sleep start/end times with overnight session support
+- **Analytics Dashboard**: Daily stats, patterns, and timeline visualization
+- **Mobile-friendly**: Responsive design for quick logging on any device
+- **Timezone-aware**: Proper handling of local time across all features
 
-### Core Tracking
-- **📊 Event Tracking**: Record milk feeds (with ml amount), diaper changes (pee/poo/both), bath times, and guided sleep sessions
-- **📈 Real-time Statistics**: View today's summary with event counts and total milk consumption
-- **⏰ 24-Hour Timeline**: Visual timeline showing all events positioned at their actual times across the day
-- **😴 Smart Sleep Tracking**: Fall-asleep/wake-up buttons automatically calculate sleep duration and close open sessions
-- **🌙 Dark Mode**: Toggle between light and dark themes with automatic preference detection
-- **⏱️ Custom Time/Date**: Set custom times for events with datetime picker
-- **📅 Date Filtering**: Filter events by today, yesterday, last 7/30 days, or custom date ranges
-- **📤 Export Data**: Export events to CSV or PDF formats
-- **📱 Responsive Design**: Mobile-optimized with breakpoints at 768px and 480px, touch-friendly timeline
-- **💾 Data Persistence**: PostgreSQL database for reliable data storage
-- **🎨 Beautiful UI**: Clean, modern interface with smooth animations and loading states
-- **🔒 Security**: HTTPS, input validation, and secure database connections
-- **⚡ Performance**: Optimized database queries and efficient rendering
+## v1.1.0 Changes
 
-### 🤖 Adaptive Parenting Coach (NEW!)
-**AI-powered pattern recognition that learns from YOUR baby's behavior**
+- **Race condition fix**: Sleep session creation now uses database transactions with row-level locking to prevent duplicate concurrent "fall asleep" events
+- **Overnight sleep tracking**: Sleep sessions spanning midnight now appear correctly in daily stats and timeline views
+- **Shared overlap logic**: Unified `eventOverlapsRange` helper ensures consistent sleep filtering across memory store, database, and client
+- **Query performance**: Stats queries now use a CTE to bound scans to a 1-day window instead of full table scans
+- **Confirmation flow**: Unusual sleep durations trigger a 422 response with confirmation prompt before recording
 
-- **🎯 Pattern Analysis**: Analyzes 14+ days of data to discover correlations between feeding times and sleep duration
-- **💡 Personalized Recommendations**: Not generic advice—real insights from your baby's actual patterns
-- **📊 Wake Window Optimization**: Finds the ideal time between naps for maximum sleep quality
-- **🎬 Feeding-to-Sleep Correlation**: Identifies optimal feeding times that lead to longer, better sleep
-- **📈 Confidence Scoring**: Each insight includes a confidence percentage based on data quantity
-- **🔍 Data Transparency**: Shows how many data points support each recommendation
+## Requirements
 
-**Example Insights:**
-> *"Based on 12 feeding sessions, feeding around 7:00 PM leads to 23 minutes longer sleep on average."*
-> 💡 *Recommendation: "Try feeding around 7:00 PM for better sleep sessions."*
+- Node.js >= 18.0.0
+- PostgreSQL (optional - falls back to in-memory store for development)
 
-> *"90-minute wake windows lead to 18 minutes longer sleep on average."*
-> 💡 *Recommendation: "Try keeping baby awake for ~90 minutes between naps."*
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 14+
-- PostgreSQL database
-- Git
-
-### Local Development
-
-1. **Clone and install dependencies**:
-   ```bash
-   git clone <repository-url>
-   cd selena
-   npm install
-   ```
-
-2. **Set up environment variables**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your database credentials
-   ```
-
-3. **Start the development server**:
-   ```bash
-   npm run dev
-   ```
-
-4. **Open http://localhost:3000** in your browser
-
-> **Note:** When `DATABASE_URL` is not configured the app automatically falls back to an in-memory datastore. This mode is perfect for local development and automated tests but should never be used for production deployments because data will be lost on restart.
-
-## 🏗️ Architecture
-
-### Technology Stack
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Frontend** | HTML5, CSS3, Vanilla JavaScript | User interface and interactions |
-| **Backend** | Node.js, Express.js | API server and routing |
-| **Database** | PostgreSQL | Data persistence |
-| **Deployment** | Railway.app | Cloud hosting platform |
-| **DNS/CDN** | Cloudflare | Domain management and security |
-
-### Project Structure
-
-```
-selena/
-├── public/                # Frontend files
-│   ├── 📄 index.html      # Main HTML entry point
-│   ├── 🎨 styles.css      # Complete CSS styling with dark mode
-│   └── ⚡ script.js       # Frontend JavaScript with timeline
-├── tests/                 # Test files
-│   └── 🧪 run-tests.js    # Automated test suite
-├── 🖥️ server.js           # Express.js server
-├── 🗄️ database.js         # Database configuration and models
-├── 📦 package.json        # Dependencies and scripts
-├── 🚄 railway.json        # Railway deployment configuration
-├── 🔧 .env.example        # Environment variables template
-├── 📚 README.md           # This documentation
-├── 📋 API.md              # API documentation
-├── 🚀 DEPLOYMENT.md       # Deployment guide
-└── 🛠️ DEVELOPMENT.md      # Development guide
-```
-
-## 📊 Database Schema
-
-```sql
-CREATE TABLE baby_events (
-  id SERIAL PRIMARY KEY,
-  type VARCHAR(20) NOT NULL,
-  amount INTEGER,
-  user_name VARCHAR(50) NOT NULL,
-  timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  sleep_start_time TIMESTAMPTZ,
-  sleep_end_time TIMESTAMPTZ
-);
-```
-
-**Indexes**:
-- `timestamp` (for sorting and filtering)
-- `type` (for statistics queries)
-- `date(timestamp)` (for daily statistics)
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | ✅ | - |
-| `NODE_ENV` | Environment (development/production) | ❌ | development |
-| `PORT` | Server port | ❌ | 3000 |
-| `BABY_HOME_TIMEZONE` | Olson timezone used for "today" calculations | ❌ | Asia/Hong_Kong |
-| `DB_STORAGE_TIMEZONE` | Timezone legacy timestamps were recorded in (used only during automatic migrations) | ❌ | UTC |
-
-### Example `.env` file:
-```env
-DATABASE_URL=postgresql://username:password@localhost:5432/baby_tracker
-NODE_ENV=development
-PORT=3000
-BABY_HOME_TIMEZONE=Asia/Hong_Kong
-DB_STORAGE_TIMEZONE=UTC
-```
-
-## 🎯 Usage Guide
-
-### Adding Events
-
-1. **Select Event Type**: Choose from Milk, Diaper Change, Bath, or Sleep
-2. **Set Details**:
-   - Milk: enter the amount in ml
-   - Diaper: choose pee/poo/both using the buttons
-   - Sleep: use the dedicated Fall Asleep / Wake Up buttons instead of the main form
-3. **Set Time**: Default is "now", or pick a custom date/time with the datetime picker
-4. **Identify the Recorder**: Pick the caregiver under "Who is recording"
-5. **Add Event**: Click "Add Event" (or the sleep buttons) to record the activity
-
-### Viewing Data
-
-- **24-Hour Timeline**: Visual representation of today's events positioned at their actual times (00:00-24:00)
-  - Icon-only lanes for each event type with color-coded markers
-  - Touch-friendly on mobile with tap-to-view tooltips
-  - Responsive layout optimized for desktop (56px icons) and mobile (48px icons)
-- **Recent Events**: See all recorded events in reverse chronological order
-- **Date Filtering**: Filter by today, yesterday, last 7/30 days, or custom date range
-- **Today's Summary**: View counts for each event type and total milk consumed
-- **Export Options**: Download events as CSV or PDF
-- **Dark Mode**: Toggle theme using the moon/sun icon in the header
-
-### Event Types
-
-| Type | Icon | Description | Data Collected |
-|------|------|-------------|----------------|
-| 🍼 Milk | 🍼 | Milk feeding session | Amount in ml, timestamp |
-| 💩 Diaper | 💧/💩/💧💩 | Diaper change (pee/poo/both) | Subtype (pee, poo, both), timestamp |
-| 😴 Sleep | 😴 | Sleep session with duration tracking | Start time, end time, duration (minutes) |
-| 🛁 Bath | 🛁 | Bath time | Timestamp |
-
-## 🚀 Deployment
-
-### Railway.app Deployment
-
-1. **Install Railway CLI**:
-   ```bash
-   npm install -g @railway/cli
-   ```
-
-2. **Login and deploy**:
-   ```bash
-   railway login
-   railway add postgresql
-   railway up
-   ```
-
-3. **Configure custom domain** (optional):
-   - Add domain in Railway dashboard
-   - Configure CNAME in Cloudflare
-   - Add verification TXT records
-
-### Manual Deployment
-
-1. **Set up production environment variables**
-2. **Build and start the application**:
-   ```bash
-   npm start
-   ```
-
-## 🔌 API Reference
-
-See [API.md](API.md) for complete API documentation.
-
-### Key Endpoints
-
-- `GET /api/events` - Get all events
-- `POST /api/events` - Create new event
-- `GET /api/stats/today` - Get today's statistics
-- `DELETE /api/events/:id` - Delete specific event
-- `GET /health` - Health check
-
-## 🛠️ Development
-
-### Code Structure
-
-#### Frontend (`public/script.js`)
-- `BabyTracker` class manages application state
-- `EVENT_CONFIG` centralized configuration for event types (icons, colors, labels, validation)
-- `UI_CONSTANTS` and `VALIDATION` constants for maintainability
-- Timeline rendering with horizontal 24-hour visualization
-- Dark mode toggle with localStorage persistence
-- Touch-friendly event handlers for mobile devices
-- Loading states and success feedback
-- API communication via Fetch API
-- Dynamic UI updates
-
-#### Pattern Analyzer (`public/pattern_analyzer.js`) NEW!
-- `PatternAnalyzer` class analyzes baby behavior patterns from historical data
-- **Feeding-to-Sleep Correlation**: Identifies optimal feeding times for longer sleep
-- **Wake Window Optimization**: Finds ideal time between naps for maximum sleep quality
-- **Confidence Scoring**: Generates 0-100% confidence scores based on data quantity
-- **Minimum Data Requirement**: Requires 14+ days of tracking before providing insights
-- **Real-time Analysis**: Automatically recalculates patterns when new events are added
-- **Extensible Design**: Easy to add new analysis types (bedtime consistency, growth spurts, location correlation)
-
-#### Backend (`server.js`)
-- Express.js server with middleware
-- RESTful API endpoints
-- `CONSTANTS` object for validation rules and rate limiting
-- Error handling and validation
-- Static file serving from `public/` directory
-- Timezone-aware date filtering using `BABY_HOME_TIMEZONE`
-
-#### Database (`database.js`)
-- PostgreSQL connection pool with fallback to in-memory store
-- Event CRUD operations
-- Statistics aggregation
-- Database initialization and migrations
-- Timezone-aware queries
-
-### Adding New Features
-
-1. **Database**: Update schema in `database.js`
-2. **API**: Add endpoints in `server.js`
-3. **Frontend**: Update `script.js` and `index.html`
-4. **Styling**: Update `styles.css`
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-- [ ] Add events of all types
-- [ ] Verify statistics update correctly
-- [ ] Test on mobile devices
-- [ ] Check error handling
-- [ ] Verify data persistence
-- [ ] **Adaptive Parenting Coach**: Test with < 14 days (shows "Keep Logging!")
-- [ ] **Adaptive Parenting Coach**: Test with 14+ days (shows personalized insights)
-- [ ] **Feeding-to-Sleep**: Add multiple feeding sessions at different times and verify sleep duration correlation
-- [ ] **Wake Windows**: Track naps with different wake windows and verify optimal window recommendation
-
-### API Testing
+## Installation
 
 ```bash
-# Test health endpoint
-curl https://selena.mangrove-hk.org/health
-
-# Test events endpoint
-curl https://selena.mangrove-hk.org/api/events
+npm install
 ```
 
-### Pattern Analyzer Testing
+## Configuration
 
-**Test Data Generation:**
-```javascript
-// Simulate 2+ weeks of data for pattern analysis
-// Add milk feeds at consistent times (e.g., 7:00 PM) followed by sleep
-// Add sleep sessions with varying wake windows (1-3 hours)
-// Verify insights appear after 14+ days of data
+Create a `.env` file with:
+
+```
+DATABASE_URL=postgresql://user:password@host:port/database
+HOME_TIMEZONE=America/Los_Angeles
 ```
 
-**Expected Insights:**
-- Feeding-to-sleep correlation when feeding events are within 4 hours before sleep
-- Wake window optimization when wake windows vary between 1-3 hours
-- Confidence scores should increase with more data points (max 90%)
+## Running
 
-## 🔒 Security Features
+```bash
+# Production
+npm start
 
-- **Input Validation**: Server-side validation for all inputs
-- **XSS Protection**: Safe DOM manipulation
-- **SQL Injection Prevention**: Parameterized queries
-- **HTTPS Enforcement**: SSL/TLS encryption
-- **CORS Configuration**: Controlled cross-origin requests
-- **Rate Limiting**: API abuse protection
+# Development
+npm run dev
 
-## 📈 Performance
+# Tests
+npm test
+```
 
-### Optimizations
-- Database connection pooling
-- Efficient SQL queries with indexes
-- Client-side caching where appropriate
-- Optimized static file serving
-- CDN caching via Cloudflare
+## API Endpoints
 
-### Monitoring
-- Railway app logs and metrics
-- Cloudflare analytics
-- Database query performance
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/events` | List all events |
+| POST | `/api/events` | Create new event |
+| DELETE | `/api/events/:id` | Delete an event |
+| GET | `/api/stats` | Get today's statistics |
+| POST | `/api/events/confirmed-sleep` | Create sleep event bypassing duration validation |
 
-## 🤝 Contributing
+## License
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-### Code Standards
-- Use consistent naming conventions
-- Add comments for complex logic
-- Follow existing code style
-- Test all changes
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Database Connection Issues**
-- Check `DATABASE_URL` environment variable
-- Verify PostgreSQL is running
-- Check network connectivity
-
-**404 Errors**
-- Verify route configurations
-- Check static file paths
-- Ensure all files are deployed
-
-**Performance Issues**
-- Check database indexes
-- Monitor query performance
-- Review client-side rendering
-
-### Getting Help
-
-- Check Railway logs for errors
-- Review Cloudflare analytics
-- Test API endpoints directly
-- Verify environment variables
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with ❤️ for new parents
-- Deployed on [Railway.app](https://railway.app)
-- Secured with [Cloudflare](https://cloudflare.com)
-- Powered by [PostgreSQL](https://postgresql.org)
-
----
-
-**Need help?** Check the [API documentation](API.md) or create an issue in the repository.
+MIT

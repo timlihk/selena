@@ -474,6 +474,29 @@ async function normalizeTimestampColumns(client) {
   }
 }
 
+function eventOverlapWithDay(event, dayStart, dayEnd) {
+  if (event.type === 'sleep' && event.sleep_start_time) {
+    const sleepStart = new Date(event.sleep_start_time);
+    if (Number.isNaN(sleepStart.getTime())) {
+      return false;
+    }
+
+    let sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date();
+    if (Number.isNaN(sleepEnd.getTime())) {
+      sleepEnd = new Date();
+    }
+
+    return sleepStart <= dayEnd && sleepEnd >= dayStart;
+  }
+
+  const eventTimestamp = new Date(event.timestamp);
+  if (Number.isNaN(eventTimestamp.getTime())) {
+    return false;
+  }
+
+  return eventTimestamp >= dayStart && eventTimestamp <= dayEnd;
+}
+
 // Event operations
 const Event = {
   // Get event by ID
@@ -621,14 +644,36 @@ const Event = {
     }
   },
 
+  // Create a new event within a transaction (accepts client for transaction safety)
+  async createWithClient(client, type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null, timestamp = null) {
+    try {
+      if (useMemoryStore) {
+        return createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp);
+      }
+
+      const result = await client.query(
+        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype, timestamp) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, CURRENT_TIMESTAMP)) RETURNING *',
+        [type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp]
+      );
+      return result.rows[0];
+    } catch (error) {
+      console.error('❌ Database error creating event with client:', error);
+      throw error;
+    }
+  },
+
   // Get today's events
   async getTodayStats() {
     try {
+      const now = new Date();
+      const todayStartLocal = new Date(now.toLocaleString('en-US', { timeZone: HOME_TIMEZONE }));
+      todayStartLocal.setHours(0, 0, 0, 0);
+      const todayEndLocal = new Date(todayStartLocal);
+      todayEndLocal.setHours(23, 59, 59, 999);
+
       if (useMemoryStore) {
-        const todayString = formatDateInTimezone(new Date(), HOME_TIMEZONE);
         const statsAccumulator = memoryStore.reduce((acc, event) => {
-          const eventDateString = formatDateInTimezone(new Date(event.timestamp), HOME_TIMEZONE);
-          if (eventDateString !== todayString) {
+          if (!eventOverlapWithDay(event, todayStartLocal, todayEndLocal)) {
             return acc;
           }
 
@@ -667,22 +712,41 @@ const Event = {
       }
 
       ensureDatabaseConnected();
-      // Simplified query: Get all events where the date (in home timezone) matches today
       const result = await pool.query(`
+        WITH bounds AS (
+          SELECT
+            DATE_TRUNC('day', NOW() AT TIME ZONE $1) AS today_start_tz,
+            DATE_TRUNC('day', NOW() AT TIME ZONE $1) + INTERVAL '24 hours' - INTERVAL '1 millisecond' AS today_end_tz
+        )
         SELECT
-          COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
-          COUNT(CASE WHEN type IN ('poo', 'diaper') THEN 1 END) as diaper_count,
-          COUNT(CASE WHEN type = 'bath' THEN 1 END) as bath_count,
-          COUNT(CASE WHEN type = 'sleep' THEN 1 END) as sleep_count,
-          COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
-          COALESCE(SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END), 0) as total_sleep_minutes
-        FROM baby_events
-        WHERE DATE(timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+          COUNT(CASE WHEN b.type = 'milk' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as milk_count,
+          COUNT(CASE WHEN b.type IN ('poo', 'diaper') AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as diaper_count,
+          COUNT(CASE WHEN b.type = 'bath' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as bath_count,
+          COUNT(CASE WHEN b.type = 'sleep' AND (
+            DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR DATE(b.sleep_start_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR DATE(b.sleep_end_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR (b.sleep_start_time AT TIME ZONE $1 < DATE_TRUNC('day', NOW() AT TIME ZONE $1)
+                AND (b.sleep_end_time IS NULL OR b.sleep_end_time AT TIME ZONE $1 >= DATE_TRUNC('day', NOW() AT TIME ZONE $1)))
+          ) THEN 1 END) as sleep_count,
+          COALESCE(SUM(CASE WHEN b.type = 'milk' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN b.amount ELSE 0 END), 0) as total_milk,
+          COALESCE(SUM(CASE WHEN b.type = 'sleep' AND (
+            DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR DATE(b.sleep_start_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR DATE(b.sleep_end_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
+            OR (b.sleep_start_time AT TIME ZONE $1 < DATE_TRUNC('day', NOW() AT TIME ZONE $1)
+                AND (b.sleep_end_time IS NULL OR b.sleep_end_time AT TIME ZONE $1 >= DATE_TRUNC('day', NOW() AT TIME ZONE $1)))
+          ) THEN b.amount ELSE 0 END), 0) as total_sleep_minutes
+        FROM baby_events b
+        CROSS JOIN bounds
+        WHERE
+          b.timestamp >= bounds.today_start_tz - INTERVAL '1 day'
+          OR (b.sleep_start_time IS NOT NULL AND b.sleep_start_time >= bounds.today_start_tz - INTERVAL '1 day')
+          OR (b.sleep_end_time IS NOT NULL AND b.sleep_end_time >= bounds.today_start_tz - INTERVAL '1 day')
       `, [HOME_TIMEZONE]);
 
       const row = result.rows[0] || {};
 
-      // Format the stats
       const stats = {
         milk: parseInt(row.milk_count, 10) || 0,
         poo: parseInt(row.diaper_count, 10) || 0,

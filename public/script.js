@@ -384,6 +384,57 @@ class BabyTracker {
                 })
             });
 
+            // Handle 422 with requiresConfirmation - unusual sleep duration
+            if (response.status === 422) {
+                const errorData = await response.json();
+                if (errorData.requiresConfirmation) {
+                    // Ask user to confirm the unusual duration
+                    const confirmed = confirm(
+                        `${errorData.error}\n\nDo you want to record this sleep session anyway?`
+                    );
+
+                    if (confirmed) {
+                        // Retry with confirmed-sleep endpoint
+                        const confirmedResponse = await fetch('/api/events/confirmed-sleep', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                type: 'sleep',
+                                sleepSubType: sleepSubType,
+                                userName: userName,
+                                timestamp: eventTimestamp
+                            })
+                        });
+
+                        if (!confirmedResponse.ok) {
+                            const confirmedError = await confirmedResponse.json();
+                            throw new Error(confirmedError.error || 'Failed to confirm sleep event');
+                        }
+
+                        await this.loadEvents();
+                        await this.updateStats();
+                        this.setCurrentTime();
+
+                        const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
+                        if (button) {
+                            this.setButtonLoading(button, false);
+                            loadingActive = false;
+                            this.showButtonSuccess(button, successMessage);
+                        }
+                        return;
+                    } else {
+                        // User cancelled - just return without error
+                        if (button) {
+                            this.setButtonLoading(button, false);
+                            loadingActive = false;
+                        }
+                        return;
+                    }
+                }
+            }
+
             if (!response.ok) {
                 let errorMessage = 'Failed to add sleep event';
                 try {
@@ -766,8 +817,7 @@ class BabyTracker {
             // Get sleep events for this day
             const daySleepEvents = this.allEvents.filter(event => {
                 if (event.type !== 'sleep') return false;
-                const eventDate = new Date(event.timestamp);
-                return eventDate >= dayStart && eventDate <= dayEnd;
+                return this.eventOverlapsRange(event, dayStart, dayEnd);
             });
 
             // Calculate total sleep for this day
@@ -795,8 +845,48 @@ class BabyTracker {
         return breakdown;
     }
 
+    eventOverlapsRange(event, start, end) {
+        if (!event) {
+            return false;
+        }
+
+        if (event.type === 'sleep') {
+            let sleepStart = event.sleep_start_time ? new Date(event.sleep_start_time) : null;
+            if (!sleepStart || isNaN(sleepStart.getTime())) {
+                sleepStart = event.timestamp ? new Date(event.timestamp) : null;
+            }
+            if (!sleepStart || isNaN(sleepStart.getTime())) {
+                return false;
+            }
+
+            let sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : null;
+            if (!sleepEnd || isNaN(sleepEnd.getTime())) {
+                sleepEnd = event.timestamp ? new Date(event.timestamp) : new Date();
+            }
+            if (!sleepEnd || isNaN(sleepEnd.getTime())) {
+                sleepEnd = new Date();
+            }
+
+            return sleepStart <= end && sleepEnd >= start;
+        }
+
+        const eventDate = event.timestamp ? new Date(event.timestamp) : null;
+        if (!eventDate || isNaN(eventDate.getTime())) {
+            return false;
+        }
+        return eventDate >= start && eventDate <= end;
+    }
+
     // Get today's events in home timezone
     getTodayEvents() {
+        const eventsSource = Array.isArray(this.allEvents) && this.allEvents.length
+            ? this.allEvents
+            : (this.events || []);
+
+        const filterForRange = (events, start, end) => {
+            return events.filter(event => this.eventOverlapsRange(event, start, end));
+        };
+
         try {
             const now = new Date();
 
@@ -822,10 +912,7 @@ class BabyTracker {
             const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
             const todayEnd = this.parseInTimezone(endStr, this.homeTimezone);
 
-            return this.allEvents.filter(event => {
-                const eventDate = new Date(event.timestamp);
-                return eventDate >= todayStart && eventDate <= todayEnd;
-            });
+            return filterForRange(eventsSource, todayStart, todayEnd);
         } catch (error) {
             console.error('Error in getTodayEvents:', error);
             // Fallback to simple date comparison in case of error
@@ -835,10 +922,7 @@ class BabyTracker {
             const todayEnd = new Date(now);
             todayEnd.setHours(23, 59, 59, 999);
 
-            return this.allEvents.filter(event => {
-                const eventDate = new Date(event.timestamp);
-                return eventDate >= todayStart && eventDate <= todayEnd;
-            });
+            return filterForRange(eventsSource, todayStart, todayEnd);
         }
     }
 
@@ -1958,7 +2042,6 @@ class BabyTracker {
                 return;
             }
 
-            const sourceEvents = this.allEvents && this.allEvents.length ? this.allEvents : this.events;
             const tz = this.homeTimezone || this.localTimezone;
             const now = new Date();
             const startOfDay = new Date(now.toLocaleString('en-US', { timeZone: tz }));
@@ -1966,11 +2049,7 @@ class BabyTracker {
             const endOfDay = new Date(startOfDay);
             endOfDay.setHours(23, 59, 59, 999);
 
-            const todayEvents = sourceEvents.filter(event => {
-                const eventDate = new Date(event.timestamp);
-                const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
-                return eventInTz >= startOfDay && eventInTz <= endOfDay;
-            });
+            const todayEvents = this.getTodayEvents();
 
             hoursContainer.innerHTML = '<div class="timeline-hours-labels"></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
