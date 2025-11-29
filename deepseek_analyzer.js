@@ -11,6 +11,7 @@ class DeepSeekEnhancedAnalyzer {
         this.model = options.model || 'deepseek-chat';
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
         this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
+        this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
     }
 
     hasSufficientData() {
@@ -247,93 +248,136 @@ class DeepSeekEnhancedAnalyzer {
     }
 
     buildDeepSeekPrompt(patterns, context) {
-        // Create a concise summary instead of full JSON
+        const ageLabel = context.ageWeeks ? `${context.ageWeeks} weeks` : 'unknown';
+        const babyName = context.profile?.name || 'the baby';
+        const dob = context.profile?.date_of_birth || 'unknown';
+        const tz = context.homeTimezone || this.timezone;
+        const measurement = this.formatMeasurement(context.latestMeasurement);
+
         const summary = `
-Baby Age: ${context.ageWeeks || 'unknown'} weeks
-Data Period: ${patterns.overallStats.dataDays} days
-Timezone: ${this.timezone}
+Profile:
+- Name: ${babyName}
+- Age: ${ageLabel}
+- DOB: ${dob}
+- Home Timezone: ${tz}
+- Latest measurement: ${measurement}
 
-Key Statistics:
-- Total Events: ${patterns.overallStats.totalEvents}
-- Feeding: ${patterns.feedingPatterns.totalFeeds} feeds (avg ${Math.round(patterns.feedingPatterns.avgAmount)}ml)
-- Sleep: ${patterns.sleepDistribution.totalSleepEvents} sleeps (avg ${Math.round(patterns.sleepDistribution.avgSleepDuration)} min)
-- Diapers: ${patterns.diaperPatterns.totalDiapers} changes
-- Feeding-to-Sleep Correlation: ${patterns.feedingToSleep.totalCorrelations} instances
+Data Coverage:
+- Data period: ${patterns.overallStats.dataDays} days
+- Total events: ${patterns.overallStats.totalEvents}
 
-Sleep Distribution:
-- Average sleep duration: ${Math.round(patterns.sleepDistribution.avgSleepDuration)} minutes
-- Sleep events per day: ${(patterns.sleepDistribution.totalSleepEvents / patterns.overallStats.dataDays).toFixed(1)}
-
-Feeding Patterns:
-- Average amount: ${Math.round(patterns.feedingPatterns.avgAmount)}ml per feed
+Feeding:
+- Total feeds: ${patterns.feedingPatterns.totalFeeds}
+- Average amount: ${Math.round(patterns.feedingPatterns.avgAmount)} ml
 - Feeds per day: ${(patterns.feedingPatterns.totalFeeds / patterns.overallStats.dataDays).toFixed(1)}
 
-Wake Windows:
-- Average wake window: ${(patterns.wakeWindows.avgWakeWindow * 60).toFixed(0)} minutes
-- Total transitions analyzed: ${patterns.wakeWindows.totalTransitions}
+Sleep:
+- Total sleeps: ${patterns.sleepDistribution.totalSleepEvents}
+- Average duration: ${Math.round(patterns.sleepDistribution.avgSleepDuration)} min
+- Feeding-to-sleep correlations: ${patterns.feedingToSleep.totalCorrelations}
+- Average wake window: ${(patterns.wakeWindows.avgWakeWindow * 60).toFixed(0)} min
+
+Diaper:
+- Total diapers: ${patterns.diaperPatterns.totalDiapers}
         `;
 
         return `You are an expert pediatric sleep consultant and baby development specialist.
+Ground rules:
+- Use current pediatric guidelines for a ${ageLabel} infant.
+- Be concise, reassuring, and specific.
+- Return ONLY JSON (no markdown, no extra text).
 
 BABY DATA SUMMARY:
 ${summary}
 
-ANALYSIS REQUEST:
-Based on this data, please provide:
-1. 2-3 key developmental insights
-2. Personalized sleep and feeding recommendations
-3. Age-appropriate expectations for an ${context.ageWeeks || 'unknown'}-week-old
-4. Any patterns that might need attention
-
-Please be concise and focus on actionable advice. Format your response as JSON with this structure:
+Respond with strict JSON:
 {
   "insights": [
     {
-      "title": "Insight title",
-      "description": "Detailed explanation",
-      "type": "developmental|sleep|feeding|health",
-      "confidence": 0.8,
-      "recommendation": "Specific action to take"
+      "title": "string",
+      "description": "string",
+      "type": "developmental|sleep|feeding|health|general",
+      "confidence": 0.0-1.0,
+      "recommendation": "actionable next step"
     }
   ],
-  "summary": "Overall summary",
-  "developmentalStage": "Current stage assessment"
+  "summary": "overall summary",
+  "developmentalStage": "brief stage note",
+  "alerts": [
+    {
+      "title": "potential risk/concern",
+      "severity": "low|medium|high",
+      "note": "short rationale"
+    }
+  ]
 }`;
     }
 
     async callDeepSeekAPI(prompt) {
-        try {
-            const response = await axios.post(this.apiBaseUrl, {
-                model: this.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'You are a pediatric sleep consultant and baby development expert. Provide accurate, evidence-based advice in a supportive, reassuring tone.'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: this.temperature,
-                max_tokens: this.maxTokens
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 30000
-            });
+        const attempts = Math.max(1, this.retries + 1);
+        let lastError = null;
 
-            return response.data.choices[0].message.content;
-        } catch (error) {
-            if (error?.response?.status === 401 || error?.response?.status === 403) {
-                const authError = new Error('DEEPSEEK_AUTH');
-                authError.code = 'DEEPSEEK_AUTH';
-                throw authError;
+        for (let i = 0; i < attempts; i++) {
+            try {
+                const response = await axios.post(this.apiBaseUrl, {
+                    model: this.model,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a pediatric sleep consultant and baby development expert. Provide accurate, evidence-based advice in a supportive, reassuring tone.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    temperature: this.temperature,
+                    max_tokens: this.maxTokens
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 15000
+                });
+
+                return response.data.choices[0].message.content;
+            } catch (error) {
+                if (error?.response?.status === 401 || error?.response?.status === 403) {
+                    const authError = new Error('DEEPSEEK_AUTH');
+                    authError.code = 'DEEPSEEK_AUTH';
+                    throw authError;
+                }
+
+                const status = error?.response?.status;
+                const retriable = [408, 425, 429, 500, 502, 503, 504].includes(status);
+                const isLastAttempt = i === attempts - 1;
+                lastError = error;
+
+                if (!retriable || isLastAttempt) {
+                    throw error;
+                }
+
+                const delayMs = 500 * (i + 1);
+                await this.delay(delayMs);
             }
-            throw error;
         }
+
+        throw lastError;
+    }
+
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    formatMeasurement(measurement) {
+        if (!measurement) return 'none';
+        const parts = [];
+        if (measurement.weight_kg) parts.push(`${measurement.weight_kg} kg`);
+        if (measurement.height_cm) parts.push(`${measurement.height_cm} cm`);
+        if (measurement.head_circumference_cm) parts.push(`head ${measurement.head_circumference_cm} cm`);
+        const dateLabel = measurement.measurement_date ? new Date(measurement.measurement_date).toISOString().split('T')[0] : 'unknown date';
+        return `${parts.join(', ') || 'no values'} (on ${dateLabel})`;
     }
 
     parseDeepSeekResponse(response, patterns) {

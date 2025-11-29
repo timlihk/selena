@@ -272,6 +272,14 @@ async function generateAndCacheInsights(reason = 'on-demand') {
   try {
     const events = await Event.getAll();
     const ageWeeks = await getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10));
+    let profile = null;
+    let latestMeasurement = null;
+    try {
+      profile = await BabyProfile.getProfile();
+      latestMeasurement = await BabyProfile.getLatestMeasurement();
+    } catch (profileErr) {
+      console.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
+    }
     console.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
     const analyzer = new DeepSeekEnhancedAnalyzer(
       events,
@@ -284,7 +292,12 @@ async function generateAndCacheInsights(reason = 'on-demand') {
       }
     );
 
-    const insights = await analyzer.generateEnhancedInsights({ ageWeeks });
+    const insights = await analyzer.generateEnhancedInsights({
+      ageWeeks,
+      profile,
+      latestMeasurement,
+      homeTimezone: HOME_TIMEZONE
+    });
     const payload = {
       success: true,
       ...insights,
