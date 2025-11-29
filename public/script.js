@@ -1610,40 +1610,23 @@ class BabyTracker {
 
     async fetchAIInsights() {
         try {
-            const cacheKey = this.getAIQueryCacheKey();
-            if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh() && this.cachedAIInsights.cacheKey === cacheKey) {
+            if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh()) {
                 return this.cachedAIInsights;
             }
 
-            const response = await fetch(`/api/ai-insights${this.buildAIQueryString()}`);
+            const response = await fetch('/api/ai-insights');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             const data = await response.json();
             if (data.success) {
-                this.cachedAIInsights = { ...data, cacheKey };
+                this.cachedAIInsights = data;
             }
             return data;
         } catch (error) {
             console.warn('Failed to fetch AI insights, using statistical only:', error);
             return null;
         }
-    }
-
-    buildAIQueryString() {
-        const params = new URLSearchParams();
-        if (this.currentGoal) params.append('goal', this.currentGoal);
-        if (this.currentConcerns && this.currentConcerns.length > 0) {
-            params.append('concerns', this.currentConcerns.join(','));
-        }
-        const qs = params.toString();
-        return qs ? `?${qs}` : '';
-    }
-
-    getAIQueryCacheKey() {
-        const goal = (this.currentGoal || '').trim().toLowerCase();
-        const concerns = (this.currentConcerns || []).map(c => c.trim().toLowerCase()).sort().join('|');
-        return `${goal}|${concerns}`;
     }
 
     isAIInsightsFresh() {

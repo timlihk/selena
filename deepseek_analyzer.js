@@ -9,17 +9,16 @@ class DeepSeekEnhancedAnalyzer {
         this.apiBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
         this.minDataDays = 10; // allow preview with trimmed lookback
         this.model = options.model || 'deepseek-chat';
-        // Moderate temperature (0.3) for balanced consistency and insight variety
-        this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
-        // Higher max tokens for richer, more detailed responses
-        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2500;
+        // Lower temperature (0.1) for consistent, reliable medical advice
+        this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.1;
+        // Reduced max tokens - optimized prompt needs less response space
+        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 1000;
         // Token usage tracking
         this.lastTokenUsage = null;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
         this.goal = options.goal || null;
         this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
         this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 30;
-        this.rawEventLimit = Number.isFinite(parseInt(options.rawEventLimit, 10)) ? parseInt(options.rawEventLimit, 10) : 1000;
     }
 
     hasSufficientData() {
@@ -54,8 +53,7 @@ class DeepSeekEnhancedAnalyzer {
             feedingPatterns: this.analyzeFeedingPatterns(),
             diaperPatterns: this.analyzeDiaperPatterns(),
             overallStats: this.getOverallStats(),
-            olderSummary: olderEventsSummary,
-            recentEventsLimited: this.sliceRecentRawEvents(recentEvents)
+            olderSummary: olderEventsSummary
         };
 
         // For sufficiency, consider full history
@@ -199,9 +197,7 @@ class DeepSeekEnhancedAnalyzer {
             return { recentEvents: this.events, olderEventsSummary: null };
         }
         const cutoff = Date.now() - (this.lookbackDays * 24 * 60 * 60 * 1000);
-        const recentEvents = this.events
-            .filter(e => new Date(e.timestamp).getTime() >= cutoff)
-            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const recentEvents = this.events.filter(e => new Date(e.timestamp).getTime() >= cutoff);
         const olderEvents = this.events.filter(e => new Date(e.timestamp).getTime() < cutoff);
 
         const summarize = (evts) => {
@@ -222,13 +218,6 @@ class DeepSeekEnhancedAnalyzer {
             recentEvents,
             olderEventsSummary: summarize(olderEvents)
         };
-    }
-
-    sliceRecentRawEvents(events) {
-        if (!this.rawEventLimit || events.length <= this.rawEventLimit) {
-            return events;
-        }
-        return events.slice(-this.rawEventLimit);
     }
 
     averageAmountFor(events, type) {
@@ -441,57 +430,19 @@ class DeepSeekEnhancedAnalyzer {
         const avgWakeMin = Math.round((patterns.wakeWindows.avgWakeWindow || 0) * 60);
         const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
 
-        // Include recent raw events for detailed pattern analysis
-        const recentEvents = this.events.slice(-50).map(e => ({
-            type: e.type,
-            time: new Date(e.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-            date: new Date(e.timestamp).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-            amount: e.amount || null,
-            subtype: e.subtype || null
-        }));
+        // Concise data block - key metrics only
+        const data = `Baby: ${ageLabel}, ${measurement}
+Goal: ${goal} | Concerns: ${concerns}
 
-        // Build comprehensive context
-        const prompt = `
-## Baby Profile
-- Age: ${ageWeeks} weeks old
-- Latest measurements: ${measurement}
-- Timezone: ${context.homeTimezone || this.timezone}
+Norms(${ageLabel}): sleep ${norms.sleepHoursMin}-${norms.sleepHoursMax}h, wake ${norms.wakeWindowMin}-${norms.wakeWindowMax}h, feeds ${norms.feedsPerDayMin}-${norms.feedsPerDayMax}x @ ${norms.feedAmountMin}-${norms.feedAmountMax}ml
 
-## Parent's Focus
-- Primary goal: ${goal}
-- Current concerns: ${concerns}
+Last ${days}d: feeds ${feedsPerDay}/day @ ${avgFeedMl}ml, sleep avg ${avgSleepMin}min, wake ${avgWakeMin}min, diapers ${diapersPerDay}/day
+${trends.feeding ? `Trends: feed ${trends.feeding}, sleep ${trends.sleep || 'stable'}, diaper ${trends.diaper || 'stable'}` : ''}`;
 
-## Age-Appropriate Norms (${ageWeeks} weeks)
-- Total daily sleep: ${norms.sleepHoursMin}-${norms.sleepHoursMax} hours
-- Wake windows: ${norms.wakeWindowMin}-${norms.wakeWindowMax} hours
-- Feeds per day: ${norms.feedsPerDayMin}-${norms.feedsPerDayMax}
-- Feed amount: ${norms.feedAmountMin}-${norms.feedAmountMax} ml per feed
+        // Minimal prompt - no JSON schema (model knows the format from system prompt)
+        return `${data}
 
-## Current Patterns (Last ${days} days)
-- Feeding: ${feedsPerDay} feeds/day, averaging ${avgFeedMl}ml per feed
-- Sleep: ${patterns.sleepDistribution.totalSleepEvents} sessions, averaging ${avgSleepMin} minutes
-- Wake windows: averaging ${avgWakeMin} minutes
-- Diapers: ${diapersPerDay}/day (${patterns.diaperPatterns.byType?.pee || 0} wet, ${patterns.diaperPatterns.byType?.poo || 0} dirty)
-
-## Trends (Week-over-Week)
-${trends.feeding ? `- Feeding: ${trends.feeding}` : '- Feeding: stable'}
-${trends.sleep ? `- Sleep: ${trends.sleep}` : '- Sleep: stable'}
-${trends.diaper ? `- Diapers: ${trends.diaper}` : '- Diapers: stable'}
-
-## Recent Activity Log (Last 50 events)
-${JSON.stringify(recentEvents, null, 1)}
-
-## Analysis Request
-Please provide:
-1. 3-5 personalized insights based on the data patterns, prioritized by importance
-2. Any safety alerts or concerns that need attention
-3. A specific action plan for tonight and tomorrow
-4. Encouragement based on what's going well
-
-Consider the parent's stated goal of "${goal}" when formulating recommendations.
-`;
-
-        return prompt;
+Provide: 2-3 insights (priority 1=urgent to 5), any alerts, tonight's plan. JSON only.`;
     }
 
     formatMeasurementCompact(m) {
@@ -513,50 +464,7 @@ Consider the parent's stated goal of "${goal}" when formulating recommendations.
                     messages: [
                         {
                             role: 'system',
-                            content: `You are an expert pediatric sleep consultant and infant development specialist with 20+ years of clinical experience. You provide evidence-based guidance following AAP (American Academy of Pediatrics) guidelines.
-
-Your expertise includes:
-- Infant sleep architecture and circadian rhythm development
-- Age-appropriate wake windows and sleep pressure
-- Feeding-sleep associations and hunger cues
-- Safe sleep practices and SIDS prevention
-- Growth spurts, developmental leaps, and regressions
-- Colic, reflux, and feeding difficulties
-
-Communication style:
-- Warm, reassuring, and non-judgmental
-- Specific and actionable (exact times, amounts, steps)
-- Evidence-based with practical flexibility
-- Acknowledge that every baby is unique
-
-Always return valid JSON matching this schema:
-{
-  "insights": [{
-    "title": "brief title",
-    "description": "detailed explanation with reasoning",
-    "type": "safety|developmental|sleep|feeding|health|routine",
-    "priority": 1-5,
-    "confidence": 0.0-1.0,
-    "recommendation": "specific actionable step",
-    "whyItMatters": "developmental/health rationale",
-    "timeframe": "when to implement"
-  }],
-  "summary": "overall assessment paragraph",
-  "developmentalContext": "what to expect at this age",
-  "alerts": [{
-    "title": "concern",
-    "severity": "low|medium|high",
-    "action": "what to do",
-    "whenToSeekHelp": "red flags"
-  }],
-  "miniPlan": {
-    "bedtimeTarget": "HH:MM with rationale",
-    "wakeWindows": ["window1 with activity suggestion", "window2"],
-    "feedingSchedule": "guidance based on patterns",
-    "focusForTomorrow": "one key improvement"
-  },
-  "encouragement": "positive note about what's going well"
-}`
+                            content: `Pediatric sleep consultant. Return JSON: {"insights":[{"title":"","description":"","type":"safety|sleep|feeding|health","priority":1-5,"recommendation":""}],"summary":"","alerts":[{"title":"","severity":"low|medium|high"}],"miniPlan":{"bedtime":"HH:MM","wakeWindows":[],"feedingNote":""}}`
                         },
                         {
                             role: 'user',
@@ -692,8 +600,7 @@ Always return valid JSON matching this schema:
             concerns: context.concerns || this.concerns,
             olderSummary: statisticalInsights.olderSummary,
             precomputedPatterns: statisticalInsights,
-            fullDataDays: statisticalInsights.fullDataDays,
-            recentEvents: statisticalInsights.recentEventsLimited || []
+            fullDataDays: statisticalInsights.fullDataDays
         });
 
         return {
