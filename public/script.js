@@ -1672,7 +1672,6 @@ class BabyTracker {
                     </div>
                     <p class="insight-description">${description}</p>
                     ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                    <p class="insight-data ai-source">Powered by DeepSeek AI</p>
                 </div>
             `;
         }).join('');
