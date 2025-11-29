@@ -585,6 +585,11 @@ class BabyTracker {
         const debouncedSave = () => {
             clearTimeout(this.profileAutoSaveTimer);
             this.profileAutoSaveTimer = setTimeout(() => {
+                if (!this.isProfileFormComplete(form)) {
+                    // Don't spam saves while the user is typing incomplete data
+                    this.setProfileStatus(container, '');
+                    return;
+                }
                 this.saveBabyProfile(form, container, { silent: true, refreshAfterSave: false });
             }, 800);
         };
@@ -593,6 +598,17 @@ class BabyTracker {
             input.addEventListener('input', debouncedSave);
             input.addEventListener('change', debouncedSave);
         });
+    }
+
+    isProfileFormComplete(form) {
+        const name = form.querySelector('#babyName')?.value?.trim();
+        const dob = form.querySelector('#dateOfBirth')?.value;
+        if (!name || !dob) return false;
+        const dobDate = new Date(dob);
+        if (Number.isNaN(dobDate.getTime())) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return dobDate <= today;
     }
 
     async saveBabyProfile(form, container, options = {}) {

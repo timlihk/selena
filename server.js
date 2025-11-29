@@ -347,7 +347,8 @@ app.get('/api/events', getEventsHandler);
 // Get AI-enhanced insights
 app.get('/api/ai-insights', async (req, res) => {
   try {
-    const payload = (!insightsCache.payload || isInsightsCacheStale())
+    const shouldRegenerate = !insightsCache.payload || isInsightsCacheStale() || (insightsCache.payload && insightsCache.payload.success === false);
+    const payload = shouldRegenerate
       ? await generateAndCacheInsights('api')
       : insightsCache.payload;
 
@@ -1068,6 +1069,10 @@ async function startServer() {
         if (process.env.DATABASE_URL) {
           await initializeDatabase();
           console.log(`🗄️  Database initialized successfully`);
+          // Refresh AI insights after DB is ready
+          generateAndCacheInsights('post-db').catch((err) => {
+            console.error('AI insights refresh after DB init failed:', err);
+          });
         } else {
           console.log(`⚠️  Skipping database initialization - DATABASE_URL not set`);
         }
