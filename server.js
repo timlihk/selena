@@ -260,7 +260,7 @@ async function getBabyAgeWeeks(defaultWeeks = 8) {
   return ageWeeks;
 }
 
-async function generateAndCacheInsights(reason = 'on-demand', context = {}) {
+async function generateAndCacheInsights(reason = 'on-demand') {
   if (insightsCache.refreshing) {
     return insightsCache.payload;
   }
@@ -288,9 +288,7 @@ async function generateAndCacheInsights(reason = 'on-demand', context = {}) {
       {
         model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
         temperature: process.env.DEEPSEEK_TEMPERATURE,
-        maxTokens: process.env.DEEPSEEK_MAX_TOKENS,
-        goal: context.goal || null,
-        concerns: context.concerns || []
+        maxTokens: process.env.DEEPSEEK_MAX_TOKENS
       }
     );
 
@@ -408,12 +406,6 @@ app.get('/api/events', getEventsHandler);
 app.get('/api/ai-insights', async (req, res) => {
   try {
     const forceRefresh = req.query.force === '1' || req.query.force === 'true';
-    const goal = typeof req.query.goal === 'string' ? req.query.goal : null;
-    const concerns = typeof req.query.concerns === 'string'
-      ? req.query.concerns.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
-    const context = { goal, concerns };
-
     const hasMissingKeyError = insightsCache.payload?.aiEnhanced?.missingApiKey === true;
     const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
       (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError;
@@ -421,7 +413,7 @@ app.get('/api/ai-insights', async (req, res) => {
     console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, missingKeyError=${hasMissingKeyError}, shouldRegenerate=${shouldRegenerate}`);
 
     const payload = shouldRegenerate
-      ? await generateAndCacheInsights('api', context)
+      ? await generateAndCacheInsights('api')
       : insightsCache.payload;
 
     res.status(payload && payload.success ? 200 : 503).json(payload);
@@ -438,6 +430,16 @@ app.get('/api/ai-insights', async (req, res) => {
 // Manual refresh endpoint with token + cooldown
 app.post('/api/ai-insights/refresh', async (req, res) => {
   try {
+    const refreshToken = process.env.DEEPSEEK_REFRESH_TOKEN || null;
+    if (!refreshToken) {
+      return res.status(404).json({ success: false, error: 'Manual refresh not enabled' });
+    }
+
+    const tokenFromRequest = req.headers['x-refresh-token'] || req.query.token;
+    if (tokenFromRequest !== refreshToken) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
     const now = Date.now();
     if (lastManualRefreshAt && (now - lastManualRefreshAt) < MANUAL_REFRESH_COOLDOWN_MS) {
       const waitSeconds = Math.ceil((MANUAL_REFRESH_COOLDOWN_MS - (now - lastManualRefreshAt)) / 1000);

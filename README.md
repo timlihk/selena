@@ -16,12 +16,6 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.4.0
-- **Goal & Concerns**: Pass parenting goals and concerns to AI for personalized advice
-- **Mini Plan**: AI now provides actionable plan with bedtime target, wake windows
-- **Why It Matters**: Each insight explains its importance
-- **Enhanced Prompt**: Richer AI responses with structured guidance
-
 ### v1.3.1
 - **AI-Only Insights**: Adaptive Coach now exclusively uses DeepSeek AI
 - **Removed Statistical Fallback**: Cleaner, focused AI-powered recommendations

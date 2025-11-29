@@ -12,8 +12,6 @@ class DeepSeekEnhancedAnalyzer {
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
         this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
-        this.goal = options.goal || null;
-        this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
     }
 
     hasSufficientData() {
@@ -300,8 +298,7 @@ Respond with strict JSON:
       "description": "string",
       "type": "developmental|sleep|feeding|health|general",
       "confidence": 0.0-1.0,
-      "recommendation": "actionable next step",
-      "whyItMatters": "short rationale"
+      "recommendation": "actionable next step"
     }
   ],
   "summary": "overall summary",
@@ -312,12 +309,7 @@ Respond with strict JSON:
       "severity": "low|medium|high",
       "note": "short rationale"
     }
-  ],
-  "miniPlan": {
-    "tonightBedtimeTarget": "HH:MM local",
-    "nextWakeWindows": ["XhYm", "XhYm"],
-    "feedingNote": "short guidance"
-  }
+  ]
 }`;
     }
 
@@ -346,7 +338,7 @@ Respond with strict JSON:
                         'Authorization': `Bearer ${this.apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 45000
+                    timeout: 15000
                 });
 
                 return response.data.choices[0].message.content;
