@@ -244,6 +244,98 @@ class DeepSeekEnhancedAnalyzer {
             .substring(0, maxLength);
     }
 
+    // Get age-appropriate recommendations based on pediatric guidelines
+    getAgeBasedRecommendations(ageWeeks) {
+        // Based on AAP and pediatric sleep guidelines
+        if (ageWeeks <= 4) {
+            return {
+                sleepHoursMin: 14, sleepHoursMax: 17,
+                wakeWindowMin: 0.5, wakeWindowMax: 1,
+                feedsPerDayMin: 8, feedsPerDayMax: 12,
+                feedAmountMin: 60, feedAmountMax: 90
+            };
+        } else if (ageWeeks <= 8) {
+            return {
+                sleepHoursMin: 14, sleepHoursMax: 17,
+                wakeWindowMin: 1, wakeWindowMax: 1.5,
+                feedsPerDayMin: 6, feedsPerDayMax: 10,
+                feedAmountMin: 90, feedAmountMax: 120
+            };
+        } else if (ageWeeks <= 12) {
+            return {
+                sleepHoursMin: 14, sleepHoursMax: 16,
+                wakeWindowMin: 1, wakeWindowMax: 2,
+                feedsPerDayMin: 6, feedsPerDayMax: 8,
+                feedAmountMin: 120, feedAmountMax: 150
+            };
+        } else if (ageWeeks <= 16) {
+            return {
+                sleepHoursMin: 13, sleepHoursMax: 15,
+                wakeWindowMin: 1.5, wakeWindowMax: 2.5,
+                feedsPerDayMin: 5, feedsPerDayMax: 7,
+                feedAmountMin: 150, feedAmountMax: 180
+            };
+        } else if (ageWeeks <= 24) {
+            return {
+                sleepHoursMin: 12, sleepHoursMax: 15,
+                wakeWindowMin: 2, wakeWindowMax: 3,
+                feedsPerDayMin: 5, feedsPerDayMax: 6,
+                feedAmountMin: 180, feedAmountMax: 210
+            };
+        } else {
+            // 6+ months
+            return {
+                sleepHoursMin: 12, sleepHoursMax: 14,
+                wakeWindowMin: 2.5, wakeWindowMax: 3.5,
+                feedsPerDayMin: 4, feedsPerDayMax: 6,
+                feedAmountMin: 180, feedAmountMax: 240
+            };
+        }
+    }
+
+    // Calculate 7-day trends comparing recent week to prior week
+    calculateTrends() {
+        if (this.events.length < 14) {
+            return { feeding: null, sleep: null, diaper: null };
+        }
+
+        const now = Date.now();
+        const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
+        const twoWeeksAgo = now - (14 * 24 * 60 * 60 * 1000);
+
+        const recentWeek = this.events.filter(e => {
+            const ts = new Date(e.timestamp).getTime();
+            return ts >= oneWeekAgo && ts < now;
+        });
+        const priorWeek = this.events.filter(e => {
+            const ts = new Date(e.timestamp).getTime();
+            return ts >= twoWeeksAgo && ts < oneWeekAgo;
+        });
+
+        const calcAvg = (events, type, field = 'amount') => {
+            const filtered = events.filter(e => e.type === type && Number.isFinite(e[field]));
+            if (!filtered.length) return null;
+            return filtered.reduce((sum, e) => sum + e[field], 0) / filtered.length;
+        };
+
+        const formatTrend = (recent, prior, unit) => {
+            if (recent === null || prior === null || prior === 0) return null;
+            const pctChange = ((recent - prior) / prior) * 100;
+            const direction = pctChange > 5 ? '↑' : pctChange < -5 ? '↓' : '→';
+            return `${direction} ${Math.abs(pctChange).toFixed(0)}% (${Math.round(prior)}${unit} → ${Math.round(recent)}${unit})`;
+        };
+
+        return {
+            feeding: formatTrend(calcAvg(recentWeek, 'milk'), calcAvg(priorWeek, 'milk'), 'ml'),
+            sleep: formatTrend(calcAvg(recentWeek, 'sleep'), calcAvg(priorWeek, 'sleep'), 'min'),
+            diaper: formatTrend(
+                recentWeek.filter(e => e.type === 'diaper').length / 7,
+                priorWeek.filter(e => e.type === 'diaper').length / 7,
+                '/day'
+            )
+        };
+    }
+
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
         const dataDays = this.getDaysOfData();
@@ -276,7 +368,8 @@ class DeepSeekEnhancedAnalyzer {
         }
 
         try {
-            const patterns = this.extractStatisticalPatterns();
+            // Use precomputed patterns if provided, otherwise compute them
+            const patterns = context.precomputedPatterns || this.extractStatisticalPatterns();
             const prompt = this.buildDeepSeekPrompt(patterns, context);
 
             console.log('[DeepSeek] Calling API...');
@@ -304,6 +397,7 @@ class DeepSeekEnhancedAnalyzer {
 
     buildDeepSeekPrompt(patterns, context) {
         const ageLabel = context.ageWeeks ? `${context.ageWeeks} weeks` : 'unknown';
+        const ageWeeks = context.ageWeeks || 8;
         const babyName = context.profile?.name || 'the baby';
         const dob = context.profile?.date_of_birth || 'unknown';
         const tz = context.homeTimezone || this.timezone;
@@ -316,6 +410,12 @@ class DeepSeekEnhancedAnalyzer {
             : [];
         const concerns = rawConcerns.length > 0 ? rawConcerns.join(', ') : 'none';
 
+        // Get age-appropriate recommendations
+        const ageRecs = this.getAgeBasedRecommendations(ageWeeks);
+
+        // Calculate 7-day trends
+        const trends = this.calculateTrends();
+
         const summary = `
 Profile:
 - Name: ${babyName}
@@ -324,10 +424,16 @@ Profile:
 - Home Timezone: ${tz}
 - Latest measurement: ${measurement}
 
+Age-Appropriate Guidelines (${ageLabel}):
+- Recommended daily sleep: ${ageRecs.sleepHoursMin}-${ageRecs.sleepHoursMax} hours
+- Recommended wake window: ${ageRecs.wakeWindowMin}-${ageRecs.wakeWindowMax} hours
+- Expected feeds per day: ${ageRecs.feedsPerDayMin}-${ageRecs.feedsPerDayMax}
+- Expected feed amount: ${ageRecs.feedAmountMin}-${ageRecs.feedAmountMax} ml
+
 Data Coverage:
 - Data period: ${patterns.overallStats.dataDays} days
 - Total events: ${patterns.overallStats.totalEvents}
- - Lookback used: ${this.lookbackDays} days
+- Lookback used: ${this.lookbackDays} days
 ${patterns.olderSummary ? `- Older data summary: ${JSON.stringify(patterns.olderSummary)}` : ''}
 
 Parent Intent:
@@ -338,15 +444,18 @@ Feeding:
 - Total feeds: ${patterns.feedingPatterns.totalFeeds}
 - Average amount: ${Math.round(patterns.feedingPatterns.avgAmount)} ml
 - Feeds per day: ${(patterns.feedingPatterns.totalFeeds / patterns.overallStats.dataDays).toFixed(1)}
+${trends.feeding ? `- 7-day trend: ${trends.feeding}` : ''}
 
 Sleep:
 - Total sleeps: ${patterns.sleepDistribution.totalSleepEvents}
 - Average duration: ${Math.round(patterns.sleepDistribution.avgSleepDuration)} min
 - Feeding-to-sleep correlations: ${patterns.feedingToSleep.totalCorrelations}
 - Average wake window: ${(patterns.wakeWindows.avgWakeWindow * 60).toFixed(0)} min
+${trends.sleep ? `- 7-day trend: ${trends.sleep}` : ''}
 
 Diaper:
 - Total diapers: ${patterns.diaperPatterns.totalDiapers}
+${trends.diaper ? `- 7-day trend: ${trends.diaper}` : ''}
         `;
 
         return `You are an expert pediatric sleep consultant analyzing data for a ${ageLabel} infant.
@@ -506,11 +615,13 @@ Return JSON:
     // Generate combined insights (statistical + AI)
     async generateEnhancedInsights(context = {}) {
         const statisticalInsights = this.extractStatisticalPatterns();
+        // Pass precomputed patterns to avoid duplicate computation
         const aiInsights = await this.analyzeWithDeepSeek({
             ...context,
             goal: context.goal || this.goal,
             concerns: context.concerns || this.concerns,
-            olderSummary: statisticalInsights.olderSummary
+            olderSummary: statisticalInsights.olderSummary,
+            precomputedPatterns: statisticalInsights
         });
 
         return {

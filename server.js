@@ -169,14 +169,24 @@ let insightsCache = {
   payload: null,
   generatedAt: null,
   refreshing: false,
-  eventCountAtGeneration: 0
+  eventCountAtGeneration: 0,
+  cacheKey: null  // Track goal/concerns for cache invalidation
 };
 const MANUAL_REFRESH_COOLDOWN_MS = parseInt(process.env.DEEPSEEK_REFRESH_COOLDOWN_MS || `${5 * 60 * 1000}`, 10);
 let lastManualRefreshAt = 0;
 
+// Generate cache key from goal/concerns
+function getInsightsCacheKey(goal, concerns) {
+  const normalizedGoal = (goal || '').trim().toLowerCase();
+  const normalizedConcerns = (concerns || []).map(c => c.trim().toLowerCase()).sort().join(',');
+  return `${normalizedGoal}|${normalizedConcerns}`;
+}
+
 // Track current event count for cache invalidation
-async function shouldInvalidateInsightsCache() {
+async function shouldInvalidateInsightsCache(cacheKey) {
   if (!insightsCache.generatedAt) return true;
+  // Invalidate if goal/concerns changed
+  if (cacheKey && insightsCache.cacheKey !== cacheKey) return true;
   try {
     const events = await Event.getAll();
     const newEventCount = events.length - insightsCache.eventCountAtGeneration;
@@ -336,6 +346,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
     insightsCache.payload = payload;
     insightsCache.generatedAt = payload.generatedAt;
     insightsCache.eventCountAtGeneration = events.length;
+    insightsCache.cacheKey = getInsightsCacheKey(options.goal, options.concerns);
     return payload;
   } catch (error) {
     console.error('AI insights generation failed:', error);
@@ -448,12 +459,13 @@ app.get('/api/ai-insights', async (req, res) => {
       ? req.query.concerns.split(',').map(s => s.trim()).filter(Boolean)
       : [];
 
+    const cacheKey = getInsightsCacheKey(goal, concerns);
     const hasMissingKeyError = insightsCache.payload?.aiEnhanced?.missingApiKey === true;
-    const newDataInvalidation = await shouldInvalidateInsightsCache();
+    const newDataInvalidation = await shouldInvalidateInsightsCache(cacheKey);
     const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
       (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError || newDataInvalidation;
 
-    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, newDataInvalidation=${newDataInvalidation}, shouldRegenerate=${shouldRegenerate}`);
+    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, cacheKeyMatch=${insightsCache.cacheKey === cacheKey}, shouldRegenerate=${shouldRegenerate}`);
 
     const payload = shouldRegenerate
       ? await generateAndCacheInsights('api', { goal, concerns })
