@@ -9,8 +9,12 @@ class DeepSeekEnhancedAnalyzer {
         this.apiBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
         this.minDataDays = 14;
         this.model = options.model || 'deepseek-chat';
-        this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
-        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
+        // Lower temperature (0.1) for consistent, reliable medical advice
+        this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.1;
+        // Reduced max tokens - optimized prompt needs less response space
+        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 1000;
+        // Token usage tracking
+        this.lastTokenUsage = null;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
         this.goal = options.goal || null;
         this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
@@ -396,118 +400,51 @@ class DeepSeekEnhancedAnalyzer {
     }
 
     buildDeepSeekPrompt(patterns, context) {
-        const ageLabel = context.ageWeeks ? `${context.ageWeeks} weeks` : 'unknown';
         const ageWeeks = context.ageWeeks || 8;
-        const babyName = context.profile?.name || 'the baby';
-        const dob = context.profile?.date_of_birth || 'unknown';
-        const tz = context.homeTimezone || this.timezone;
-        const measurement = this.formatMeasurement(context.latestMeasurement);
-        // Sanitize user-provided inputs to prevent prompt injection
-        const rawGoal = context.goal || this.goal || '';
-        const goal = this.sanitizePromptInput(rawGoal) || 'balanced sleep and feeds';
-        const rawConcerns = context.concerns && context.concerns.length > 0
-            ? context.concerns.map(c => this.sanitizePromptInput(c, 100)).filter(Boolean)
-            : [];
-        const concerns = rawConcerns.length > 0 ? rawConcerns.join(', ') : 'none';
+        const ageLabel = `${ageWeeks}w`;
+        const measurement = this.formatMeasurementCompact(context.latestMeasurement);
 
-        // Get age-appropriate recommendations
-        const ageRecs = this.getAgeBasedRecommendations(ageWeeks);
+        // Sanitize user inputs
+        const goal = this.sanitizePromptInput(context.goal || this.goal || '') || 'balanced development';
+        const concerns = (context.concerns || this.concerns || [])
+            .map(c => this.sanitizePromptInput(c, 50)).filter(Boolean).join(', ') || 'none';
 
-        // Calculate 7-day trends
+        // Get age norms and trends
+        const norms = this.getAgeBasedRecommendations(ageWeeks);
         const trends = this.calculateTrends();
+        const days = patterns.overallStats.dataDays;
 
-        const summary = `
-Profile:
-- Name: ${babyName}
-- Age: ${ageLabel}
-- DOB: ${dob}
-- Home Timezone: ${tz}
-- Latest measurement: ${measurement}
+        // Compute key metrics for comparison
+        const feedsPerDay = (patterns.feedingPatterns.totalFeeds / days).toFixed(1);
+        const avgFeedMl = Math.round(patterns.feedingPatterns.avgAmount);
+        const avgSleepMin = Math.round(patterns.sleepDistribution.avgSleepDuration);
+        const avgWakeMin = Math.round(patterns.wakeWindows.avgWakeWindow * 60);
+        const diapersPerDay = (patterns.diaperPatterns.totalDiapers / days).toFixed(1);
 
-Age-Appropriate Guidelines (${ageLabel}):
-- Recommended daily sleep: ${ageRecs.sleepHoursMin}-${ageRecs.sleepHoursMax} hours
-- Recommended wake window: ${ageRecs.wakeWindowMin}-${ageRecs.wakeWindowMax} hours
-- Expected feeds per day: ${ageRecs.feedsPerDayMin}-${ageRecs.feedsPerDayMax}
-- Expected feed amount: ${ageRecs.feedAmountMin}-${ageRecs.feedAmountMax} ml
+        // Concise data block - key metrics only
+        const data = `Baby: ${ageLabel}, ${measurement}
+Goal: ${goal} | Concerns: ${concerns}
 
-Data Coverage:
-- Data period: ${patterns.overallStats.dataDays} days
-- Total events: ${patterns.overallStats.totalEvents}
-- Lookback used: ${this.lookbackDays} days
-${patterns.olderSummary ? `- Older data summary: ${JSON.stringify(patterns.olderSummary)}` : ''}
+Norms(${ageLabel}): sleep ${norms.sleepHoursMin}-${norms.sleepHoursMax}h, wake ${norms.wakeWindowMin}-${norms.wakeWindowMax}h, feeds ${norms.feedsPerDayMin}-${norms.feedsPerDayMax}x @ ${norms.feedAmountMin}-${norms.feedAmountMax}ml
 
-Parent Intent:
-- Goal: ${goal}
-- Concerns: ${concerns}
+Last ${days}d: feeds ${feedsPerDay}/day @ ${avgFeedMl}ml, sleep avg ${avgSleepMin}min, wake ${avgWakeMin}min, diapers ${diapersPerDay}/day
+${trends.feeding ? `Trends: feed ${trends.feeding}, sleep ${trends.sleep || 'stable'}, diaper ${trends.diaper || 'stable'}` : ''}`;
 
-Feeding:
-- Total feeds: ${patterns.feedingPatterns.totalFeeds}
-- Average amount: ${Math.round(patterns.feedingPatterns.avgAmount)} ml
-- Feeds per day: ${(patterns.feedingPatterns.totalFeeds / patterns.overallStats.dataDays).toFixed(1)}
-${trends.feeding ? `- 7-day trend: ${trends.feeding}` : ''}
+        // Optimized prompt - concise system instruction + data
+        return `Pediatric sleep consultant for ${ageLabel} infant. Prioritize: 1)Safety 2)Health 3)Optimization.
+Flag: sleep <10h/>18h, no wet diaper 6h+, feed gap >5h. Be specific, actionable, reassuring. JSON only.
 
-Sleep:
-- Total sleeps: ${patterns.sleepDistribution.totalSleepEvents}
-- Average duration: ${Math.round(patterns.sleepDistribution.avgSleepDuration)} min
-- Feeding-to-sleep correlations: ${patterns.feedingToSleep.totalCorrelations}
-- Average wake window: ${(patterns.wakeWindows.avgWakeWindow * 60).toFixed(0)} min
-${trends.sleep ? `- 7-day trend: ${trends.sleep}` : ''}
+${data}
 
-Diaper:
-- Total diapers: ${patterns.diaperPatterns.totalDiapers}
-${trends.diaper ? `- 7-day trend: ${trends.diaper}` : ''}
-        `;
-
-        return `You are an expert pediatric sleep consultant analyzing data for a ${ageLabel} infant.
-
-PRIORITY ORDER (address in this order):
-1. SAFETY: Breathing concerns, feeding adequacy, hydration (wet diapers)
-2. HEALTH: Sleep totals, growth patterns, developmental red flags
-3. OPTIMIZATION: Schedule improvements, routine suggestions
-
-CRITICAL THRESHOLDS TO FLAG:
-- Total daily sleep <10h or >18h for this age
-- No wet diaper in 6+ hours
-- Feeding gaps >5 hours (daytime) for infant <3 months
-- Weight/growth concerns if measurements provided
-
-GUIDELINES:
-- Be SPECIFIC: "Try bedtime at 7:30pm" not "establish a routine"
-- Be ACTIONABLE: Give exact times, amounts, or steps
-- Be REASSURING: Most variations are normal; avoid alarm unless warranted
-- Return ONLY valid JSON (no markdown, no extra text)
-
-BABY DATA:
-${summary}
-
-Return JSON:
-{
-  "insights": [
-    {
-      "title": "short title",
-      "description": "1-2 sentences",
-      "type": "safety|developmental|sleep|feeding|health|general",
-      "priority": 1-5 (1=most urgent),
-      "confidence": 0.0-1.0,
-      "recommendation": "specific actionable step",
-      "whyItMatters": "short rationale"
+{"insights":[{"title":"","description":"","type":"safety|sleep|feeding|health|general","priority":1-5,"confidence":0-1,"recommendation":"","whyItMatters":""}],"summary":"","alerts":[{"title":"","severity":"low|medium|high","note":""}],"miniPlan":{"bedtime":"HH:MM","wakeWindows":[""],"feedingNote":""}}`;
     }
-  ],
-  "summary": "1-2 sentence overall assessment",
-  "developmentalStage": "brief note on expected development for age",
-  "alerts": [
-    {
-      "title": "concern title",
-      "severity": "low|medium|high",
-      "note": "short rationale"
-    }
-  ],
-  "miniPlan": {
-    "tonightBedtimeTarget": "HH:MM",
-    "nextWakeWindows": ["XhYm", "XhYm"],
-    "feedingNote": "short guidance"
-  }
-}`;
+
+    formatMeasurementCompact(m) {
+        if (!m) return 'no measurements';
+        const parts = [];
+        if (m.weight_kg) parts.push(`${m.weight_kg}kg`);
+        if (m.height_cm) parts.push(`${m.height_cm}cm`);
+        return parts.join('/') || 'no measurements';
     }
 
     async callDeepSeekAPI(prompt) {
@@ -521,7 +458,7 @@ Return JSON:
                     messages: [
                         {
                             role: 'system',
-                            content: 'You are a pediatric sleep consultant and baby development expert. Provide accurate, evidence-based advice in a supportive, reassuring tone.'
+                            content: 'Pediatric sleep consultant. Give accurate, evidence-based, actionable advice. JSON only.'
                         },
                         {
                             role: 'user',
@@ -537,6 +474,16 @@ Return JSON:
                     },
                     timeout: 45000
                 });
+
+                // Track token usage for cost monitoring
+                if (response.data.usage) {
+                    this.lastTokenUsage = {
+                        promptTokens: response.data.usage.prompt_tokens,
+                        completionTokens: response.data.usage.completion_tokens,
+                        totalTokens: response.data.usage.total_tokens
+                    };
+                    console.log(`[DeepSeek] Tokens: prompt=${this.lastTokenUsage.promptTokens}, completion=${this.lastTokenUsage.completionTokens}, total=${this.lastTokenUsage.totalTokens}`);
+                }
 
                 return response.data.choices[0].message.content;
             } catch (error) {
@@ -632,7 +579,8 @@ Return JSON:
                 days: this.getDaysOfData(),
                 sufficient: this.hasSufficientData(),
                 totalEvents: this.events.length
-            }
+            },
+            tokenUsage: this.lastTokenUsage
         };
     }
 }
