@@ -288,7 +288,9 @@ async function generateAndCacheInsights(reason = 'on-demand') {
       {
         model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
         temperature: process.env.DEEPSEEK_TEMPERATURE,
-        maxTokens: process.env.DEEPSEEK_MAX_TOKENS
+        maxTokens: process.env.DEEPSEEK_MAX_TOKENS,
+        goal: req.context?.goal,
+        concerns: req.context?.concerns
       }
     );
 
@@ -406,6 +408,12 @@ app.get('/api/events', getEventsHandler);
 app.get('/api/ai-insights', async (req, res) => {
   try {
     const forceRefresh = req.query.force === '1' || req.query.force === 'true';
+    const goal = typeof req.query.goal === 'string' ? req.query.goal : null;
+    const concerns = typeof req.query.concerns === 'string'
+      ? req.query.concerns.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    req.context = { goal, concerns };
+
     const hasMissingKeyError = insightsCache.payload?.aiEnhanced?.missingApiKey === true;
     const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
       (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError;

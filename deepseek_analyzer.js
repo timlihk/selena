@@ -12,6 +12,8 @@ class DeepSeekEnhancedAnalyzer {
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
         this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
+        this.goal = options.goal || null;
+        this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
     }
 
     hasSufficientData() {
@@ -298,7 +300,8 @@ Respond with strict JSON:
       "description": "string",
       "type": "developmental|sleep|feeding|health|general",
       "confidence": 0.0-1.0,
-      "recommendation": "actionable next step"
+      "recommendation": "actionable next step",
+      "whyItMatters": "short rationale"
     }
   ],
   "summary": "overall summary",
@@ -309,7 +312,12 @@ Respond with strict JSON:
       "severity": "low|medium|high",
       "note": "short rationale"
     }
-  ]
+  ],
+  "miniPlan": {
+    "tonightBedtimeTarget": "HH:MM local",
+    "nextWakeWindows": ["XhYm", "XhYm"],
+    "feedingNote": "short guidance"
+  }
 }`;
     }
 

@@ -3,7 +3,7 @@
 ## Project Overview
 A web application to track newborn baby events (feeding, sleep, diapers, baths) with AI-powered insights. Deployed on Railway with PostgreSQL.
 
-**Current Version**: 1.3.1
+**Current Version**: 1.4.0
 
 ## Tech Stack
 - **Backend**: Node.js + Express
