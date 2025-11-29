@@ -1596,22 +1596,15 @@ class BabyTracker {
         `;
 
         try {
-            // Get statistical insights first
-            const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
-            const statisticalInsights = analyzer.generateInsights();
-
             // Fetch AI-enhanced insights
             const aiInsights = await this.fetchAIInsights();
 
-            // Render combined insights
-            this.renderEnhancedInsights(statisticalInsights, aiInsights, container);
+            // Render AI-only insights (no statistical fallback)
+            this.renderAIInsightsOnly(aiInsights, container);
 
         } catch (error) {
             console.error('Error updating adaptive coach:', error);
-            // Fallback to statistical insights only
-            const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
-            const insights = analyzer.generateInsights();
-            this.renderStatisticalInsights(insights, container);
+            container.innerHTML = '<p class="no-data">AI insights unavailable right now.</p>';
         }
     }
 
@@ -1691,78 +1684,48 @@ class BabyTracker {
     }
 
     renderEnhancedInsights(statisticalInsights, aiInsights, container) {
-        let insightsHtml = '';
+        // Deprecated: delegate to AI-only rendering
+        this.renderAIInsightsOnly(aiInsights, container);
+    }
 
-        // Add AI insights first if available
-        if (aiInsights?.success && aiInsights.aiEnhanced?.insights?.length > 0) {
-            insightsHtml += aiInsights.aiEnhanced.insights.slice(0, 2).map(insight => {
-                const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
-                                       insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-                const title = this.escapeHtml(insight.title || '');
-                const description = this.escapeHtml(insight.description || '');
-                const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-                const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-                return `
-                    <div class="insights-card coach-insight ai-insight ${typeClass}">
-                        <div class="insight-header">
-                            <h4>🤖 ${title}</h4>
-                            <span class="ai-badge">AI</span>
-                            ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
-                        </div>
-                        <p class="insight-description">${description}</p>
-                        ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                        <p class="insight-data ai-source">Powered by DeepSeek AI</p>
+    renderAIInsightsOnly(aiInsights, container) {
+        const aiItems = aiInsights?.aiEnhanced?.insights || aiInsights?.insights || [];
+
+        if (!aiInsights || !aiInsights.success || aiItems.length === 0) {
+            const errorMsg = aiInsights?.error || 'AI insights unavailable right now.';
+            container.innerHTML = `
+                <div class="intelligence-card">
+                    <div class="coach-header">
+                        <h3>🎯 Adaptive Parenting Coach</h3>
+                        ${this.renderAIRefreshControls()}
                     </div>
-                `;
-            }).join('');
-        }
-
-        // Add statistical insights
-        if (statisticalInsights && statisticalInsights.length > 0) {
-            insightsHtml += statisticalInsights.slice(0, 2).map(insight => {
-                const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
-                                       insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-                const title = this.escapeHtml(insight.title || '');
-                const description = this.escapeHtml(insight.description || '');
-                const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-                const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-                const peakLabel = insight.stats?.hour !== undefined
-                    ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
-                    : insight.stats?.windowMinutes !== undefined
-                        ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
-                        : '';
-                const statsDetails = insight.stats ? `
-                    <p class="insight-data">
-                        📊 ${insight.stats.sampleCount} samples,
-                        avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
-                        (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
-                        z=${insight.stats.zScore})
-                    </p>
-                    ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
-                ` : '';
-                const dataPointsLine = !insight.stats && insight.dataPoints > 0
-                    ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
-                    : '';
-                return `
-                    <div class="insights-card coach-insight statistical-insight ${typeClass}">
-                        <div class="insight-header">
-                            <h4>📊 ${title}</h4>
-                            ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
-                        </div>
-                        <p class="insight-description">${description}</p>
-                        ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                        ${statsDetails || dataPointsLine}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        if (!insightsHtml) {
-            container.innerHTML = '<p class="no-data">No insights yet - keep tracking!</p>';
+                    <p class="no-data">${this.escapeHtml(errorMsg)}</p>
+                </div>
+            `;
+            this.setupAIRefreshControls(container);
             return;
         }
 
-        const meta = this.renderAIInsightsMeta(aiInsights);
+        const insightsHtml = aiItems.slice(0, 3).map(insight => {
+            const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
+                                   insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
+            const title = this.escapeHtml(insight.title || '');
+            const description = this.escapeHtml(insight.description || '');
+            const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
+            const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
+            return `
+                <div class="insights-card coach-insight ai-insight ${typeClass}">
+                    <div class="insight-header">
+                        <h4>🤖 ${title}</h4>
+                        <span class="ai-badge">AI</span>
+                        ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
+                    </div>
+                    <p class="insight-description">${description}</p>
+                    ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
+                    <p class="insight-data ai-source">Powered by DeepSeek AI</p>
+                </div>
+            `;
+        }).join('');
 
         container.innerHTML = `
             <div class="intelligence-card">
@@ -1781,63 +1744,6 @@ class BabyTracker {
             </div>
         `;
         this.setupAIRefreshControls(container);
-    }
-
-    renderStatisticalInsights(insights, container) {
-        if (!insights || insights.length === 0) {
-            container.innerHTML = '<p class="no-data">No insights yet - keep tracking!</p>';
-            return;
-        }
-
-        const insightsHtml = insights.slice(0, 3).map(insight => {
-            const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
-                                   insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-            const title = this.escapeHtml(insight.title || '');
-            const description = this.escapeHtml(insight.description || '');
-            const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-            const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-            const peakLabel = insight.stats?.hour !== undefined
-                ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
-                : insight.stats?.windowMinutes !== undefined
-                    ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
-                    : '';
-            const statsDetails = insight.stats ? `
-                <p class="insight-data">
-                    📊 ${insight.stats.sampleCount} samples,
-                    avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
-                    (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
-                    z=${insight.stats.zScore})
-                </p>
-                ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
-            ` : '';
-            const dataPointsLine = !insight.stats && insight.dataPoints > 0
-                ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
-                : '';
-            return `
-                <div class="insights-card coach-insight ${typeClass}">
-                    <div class="insight-header">
-                        <h4>${title}</h4>
-                        ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
-                    </div>
-                    <p class="insight-description">${description}</p>
-                    ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                    ${statsDetails || dataPointsLine}
-                </div>
-            `;
-        }).join('');
-
-            container.innerHTML = `
-                <div class="intelligence-card">
-                    <div class="coach-header">
-                        <h3>🎯 Adaptive Parenting Coach</h3>
-                        ${this.renderAIRefreshControls()}
-                    </div>
-                    <div class="coach-insights">
-                        ${insightsHtml}
-                    </div>
-                </div>
-            `;
-            this.setupAIRefreshControls(container);
     }
 
     // Helper to format minutes as "Xh Ym"

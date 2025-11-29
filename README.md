@@ -16,6 +16,11 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
+### v1.3.1
+- **AI-Only Insights**: Adaptive Coach now exclusively uses DeepSeek AI
+- **Removed Statistical Fallback**: Cleaner, focused AI-powered recommendations
+- **Show 3 Insights**: Display up to 3 AI insights (was 2)
+
 ### v1.3.0
 - **Simplified AI Refresh**: One-click AI insights refresh without token requirement
 - **Streamlined UI**: Cleaner Adaptive Coach interface
