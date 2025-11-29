@@ -1596,11 +1596,15 @@ class BabyTracker {
         `;
 
         try {
+            // Compute statistical insights for fallback
+            const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
+            const statisticalInsights = analyzer.generateInsights();
+
             // Fetch AI-enhanced insights
             const aiInsights = await this.fetchAIInsights();
 
-            // Render AI-only insights (no statistical fallback)
-            this.renderAIInsightsOnly(aiInsights, container);
+            // Render AI, fallback to stats if needed
+            this.renderAIWithFallback(statisticalInsights, aiInsights, container);
 
         } catch (error) {
             console.error('Error updating adaptive coach:', error);
@@ -1638,49 +1642,11 @@ class BabyTracker {
     }
 
     renderAIRefreshControls() {
-        return `
-            <div class="ai-controls">
-                <button id="aiRefreshBtn" class="btn-secondary small">↻ Refresh AI</button>
-                <span id="aiRefreshStatus" class="ai-refresh-status"></span>
-            </div>
-        `;
+        return '';
     }
 
     setupAIRefreshControls(container) {
-        const btn = container.querySelector('#aiRefreshBtn');
-        const statusEl = container.querySelector('#aiRefreshStatus');
-        if (!btn || btn.dataset.bound === 'true') return;
-        btn.dataset.bound = 'true';
-        btn.addEventListener('click', () => this.triggerAIRefresh(btn, statusEl));
-    }
-
-    async triggerAIRefresh(button, statusEl) {
-        try {
-            button.disabled = true;
-            if (statusEl) statusEl.textContent = 'Refreshing...';
-
-            const response = await fetch('/api/ai-insights/refresh', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `Refresh failed (HTTP ${response.status})`);
-            }
-
-            this.cachedAIInsights = data;
-            if (statusEl) statusEl.textContent = 'AI refreshed';
-            // Re-render to show fresh timestamp
-            this.updateAdaptiveCoach();
-        } catch (error) {
-            console.error('AI refresh failed:', error);
-            if (statusEl) statusEl.textContent = error.message || 'Refresh failed';
-            alert(error.message || 'AI refresh failed');
-        } finally {
-            if (button) button.disabled = false;
-        }
+        // Refresh controls removed
     }
 
     renderEnhancedInsights(statisticalInsights, aiInsights, container) {
@@ -1688,21 +1654,33 @@ class BabyTracker {
         this.renderAIInsightsOnly(aiInsights, container);
     }
 
-    renderAIInsightsOnly(aiInsights, container) {
+    renderAIWithFallback(statisticalInsights, aiInsights, container) {
         const aiItems = aiInsights?.aiEnhanced?.insights || aiInsights?.insights || [];
 
         if (!aiInsights || !aiInsights.success || aiItems.length === 0) {
             const errorMsg = aiInsights?.error || 'AI insights unavailable right now.';
+            if (statisticalInsights && statisticalInsights.length > 0) {
+                container.innerHTML = `
+                    <div class="intelligence-card">
+                        <div class="coach-header">
+                            <h3>🎯 Adaptive Parenting Coach</h3>
+                        </div>
+                        <p class="no-data">${this.escapeHtml(errorMsg)} Showing statistical trends instead.</p>
+                        <div class="coach-insights">
+                            ${this.renderStatisticalInsightsContent(statisticalInsights)}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
             container.innerHTML = `
                 <div class="intelligence-card">
                     <div class="coach-header">
                         <h3>🎯 Adaptive Parenting Coach</h3>
-                        ${this.renderAIRefreshControls()}
                     </div>
                     <p class="no-data">${this.escapeHtml(errorMsg)}</p>
                 </div>
             `;
-            this.setupAIRefreshControls(container);
             return;
         }
 
@@ -1724,14 +1702,13 @@ class BabyTracker {
                     ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
                     <p class="insight-data ai-source">Powered by DeepSeek AI</p>
                 </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
 
         container.innerHTML = `
             <div class="intelligence-card">
                 <div class="coach-header">
                     <h3>🎯 Adaptive Parenting Coach</h3>
-                    ${this.renderAIRefreshControls()}
                 </div>
                 <div class="coach-insights">
                     ${insightsHtml}
@@ -1743,7 +1720,49 @@ class BabyTracker {
                 ` : ''}
             </div>
         `;
-        this.setupAIRefreshControls(container);
+    }
+
+    renderStatisticalInsightsContent(insights) {
+        if (!insights || insights.length === 0) {
+            return '<p class="no-data">No insights yet - keep tracking!</p>';
+        }
+
+        return insights.slice(0, 3).map(insight => {
+            const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
+                                   insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
+            const title = this.escapeHtml(insight.title || '');
+            const description = this.escapeHtml(insight.description || '');
+            const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
+            const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
+            const peakLabel = insight.stats?.hour !== undefined
+                ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
+                : insight.stats?.windowMinutes !== undefined
+                    ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
+                    : '';
+            const statsDetails = insight.stats ? `
+                <p class="insight-data">
+                    📊 ${insight.stats.sampleCount} samples,
+                    avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
+                    (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
+                    z=${insight.stats.zScore})
+                </p>
+                ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
+            ` : '';
+            const dataPointsLine = !insight.stats && insight.dataPoints > 0
+                ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
+                : '';
+            return `
+                <div class="insights-card coach-insight ${typeClass}">
+                    <div class="insight-header">
+                        <h4>${title}</h4>
+                        ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
+                    </div>
+                    <p class="insight-description">${description}</p>
+                    ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
+                    ${statsDetails || dataPointsLine}
+                </div>
+            `;
+        }).join('');
     }
 
     // Helper to format minutes as "Xh Ym"
