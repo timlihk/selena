@@ -14,7 +14,7 @@ class DeepSeekEnhancedAnalyzer {
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
         this.goal = options.goal || null;
         this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
-        this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 15;
+        this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 30;
     }
 
     hasSufficientData() {
@@ -33,25 +33,20 @@ class DeepSeekEnhancedAnalyzer {
     // Extract statistical patterns for AI enhancement
     extractStatisticalPatterns() {
         const { recentEvents, olderEventsSummary } = this.splitEventsByLookback();
-        const analyzer = new DeepSeekEnhancedAnalyzer(recentEvents, this.timezone, this.apiKey, {
-            model: this.model,
-            temperature: this.temperature,
-            maxTokens: this.maxTokens,
-            retries: this.retries,
-            goal: this.goal,
-            concerns: this.concerns,
-            lookbackDays: this.lookbackDays
-        });
+        const originalEvents = this.events;
+        this.events = recentEvents;
 
         const patterns = {
-            feedingToSleep: analyzer.analyzeFeedingToSleep(),
-            wakeWindows: analyzer.analyzeWakeWindows(),
-            sleepDistribution: analyzer.analyzeSleepDistribution(),
-            feedingPatterns: analyzer.analyzeFeedingPatterns(),
-            diaperPatterns: analyzer.analyzeDiaperPatterns(),
-            overallStats: analyzer.getOverallStats(),
+            feedingToSleep: this.analyzeFeedingToSleep(),
+            wakeWindows: this.analyzeWakeWindows(),
+            sleepDistribution: this.analyzeSleepDistribution(),
+            feedingPatterns: this.analyzeFeedingPatterns(),
+            diaperPatterns: this.analyzeDiaperPatterns(),
+            overallStats: this.getOverallStats(),
             olderSummary: olderEventsSummary
         };
+
+        this.events = originalEvents;
         return patterns;
     }
 
@@ -302,6 +297,8 @@ class DeepSeekEnhancedAnalyzer {
         const dob = context.profile?.date_of_birth || 'unknown';
         const tz = context.homeTimezone || this.timezone;
         const measurement = this.formatMeasurement(context.latestMeasurement);
+        const goal = context.goal || this.goal || 'balanced sleep and feeds';
+        const concerns = context.concerns && context.concerns.length > 0 ? context.concerns.join(', ') : 'none';
 
         const summary = `
 Profile:
@@ -316,6 +313,10 @@ Data Coverage:
 - Total events: ${patterns.overallStats.totalEvents}
  - Lookback used: ${this.lookbackDays} days
 ${patterns.olderSummary ? `- Older data summary: ${JSON.stringify(patterns.olderSummary)}` : ''}
+
+Parent Intent:
+- Goal: ${goal}
+- Concerns: ${concerns}
 
 Feeding:
 - Total feeds: ${patterns.feedingPatterns.totalFeeds}
@@ -349,7 +350,8 @@ Respond with strict JSON:
       "description": "string",
       "type": "developmental|sleep|feeding|health|general",
       "confidence": 0.0-1.0,
-      "recommendation": "actionable next step"
+      "recommendation": "actionable next step",
+      "whyItMatters": "short rationale"
     }
   ],
   "summary": "overall summary",
@@ -360,7 +362,12 @@ Respond with strict JSON:
       "severity": "low|medium|high",
       "note": "short rationale"
     }
-  ]
+  ],
+  "miniPlan": {
+    "tonightBedtimeTarget": "HH:MM local",
+    "nextWakeWindows": ["XhYm", "XhYm"],
+    "feedingNote": "short guidance"
+  }
 }`;
     }
 
@@ -389,7 +396,7 @@ Respond with strict JSON:
                         'Authorization': `Bearer ${this.apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 15000
+                    timeout: 45000
                 });
 
                 return response.data.choices[0].message.content;
