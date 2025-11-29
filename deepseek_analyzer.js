@@ -229,6 +229,9 @@ class DeepSeekEnhancedAnalyzer {
             return this.parseDeepSeekResponse(response, patterns);
 
         } catch (error) {
+            if (error && (error.code === 'DEEPSEEK_AUTH' || error.message === 'DEEPSEEK_AUTH')) {
+                throw error;
+            }
             console.error('[DeepSeek] API error:', error.message);
             if (error.response) {
                 console.error('[DeepSeek] Response status:', error.response.status);
@@ -299,35 +302,50 @@ Please be concise and focus on actionable advice. Format your response as JSON w
     }
 
     async callDeepSeekAPI(prompt) {
-        const response = await axios.post(this.apiBaseUrl, {
-            model: this.model,
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a pediatric sleep consultant and baby development expert. Provide accurate, evidence-based advice in a supportive, reassuring tone.'
+        try {
+            const response = await axios.post(this.apiBaseUrl, {
+                model: this.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are a pediatric sleep consultant and baby development expert. Provide accurate, evidence-based advice in a supportive, reassuring tone.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: this.temperature,
+                max_tokens: this.maxTokens
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
                 },
-                {
-                    role: 'user',
-                    content: prompt
-                }
-            ],
-            temperature: this.temperature,
-            max_tokens: this.maxTokens
-        }, {
-            headers: {
-                'Authorization': `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 30000
-        });
+                timeout: 30000
+            });
 
-        return response.data.choices[0].message.content;
+            return response.data.choices[0].message.content;
+        } catch (error) {
+            if (error?.response?.status === 401 || error?.response?.status === 403) {
+                const authError = new Error('DEEPSEEK_AUTH');
+                authError.code = 'DEEPSEEK_AUTH';
+                throw authError;
+            }
+            throw error;
+        }
     }
 
     parseDeepSeekResponse(response, patterns) {
         try {
-            // Try to parse as JSON first
-            const parsed = JSON.parse(response);
+            // Strip markdown code blocks if present (```json ... ```)
+            let cleanResponse = response.trim();
+            if (cleanResponse.startsWith('```')) {
+                cleanResponse = cleanResponse.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+            }
+
+            // Try to parse as JSON
+            const parsed = JSON.parse(cleanResponse);
             return {
                 ...parsed,
                 patterns: patterns,
@@ -335,6 +353,7 @@ Please be concise and focus on actionable advice. Format your response as JSON w
                 source: 'deepseek_ai'
             };
         } catch (error) {
+            console.log('[DeepSeek] JSON parse failed, using text fallback:', error.message);
             // If JSON parsing fails, return as text analysis
             return {
                 insights: [{

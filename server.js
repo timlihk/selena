@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { initializeDatabase, Event, BabyProfile, withTransaction } = require('./database');
 const DeepSeekEnhancedAnalyzer = require('./deepseek_analyzer');
+const axios = require('axios');
 
 // Input validation constants
 // Enhanced validation functions
@@ -209,6 +210,37 @@ function isInsightsCacheStale() {
   return cacheAgeMs > INSIGHTS_CACHE_TTL_MS;
 }
 
+async function checkDeepSeekHealth() {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    return { ok: false, status: 400, error: 'DEEPSEEK_API_KEY not set' };
+  }
+
+  try {
+    const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      messages: [{ role: 'user', content: 'healthcheck' }],
+      max_tokens: 1,
+      temperature: 0
+    }, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 8000
+    });
+
+    const ok = response.status >= 200 && response.status < 300;
+    return { ok, status: response.status };
+  } catch (err) {
+    const status = err?.response?.status || 500;
+    if (status === 401 || status === 403) {
+      return { ok: false, status, error: 'DeepSeek key rejected' };
+    }
+    return { ok: false, status, error: err.message || 'DeepSeek health check failed' };
+  }
+}
+
 async function getBabyAgeWeeks(defaultWeeks = 8) {
   let ageWeeks = defaultWeeks;
 
@@ -266,11 +298,13 @@ async function generateAndCacheInsights(reason = 'on-demand') {
     return payload;
   } catch (error) {
     console.error('AI insights generation failed:', error);
+    const isAuthError = error && (error.code === 'DEEPSEEK_AUTH' || error.message === 'DEEPSEEK_AUTH');
     const payload = {
       success: false,
-      error: 'AI insights temporarily unavailable',
-      message: 'Please try again later',
-      generatedAt: new Date().toISOString()
+      error: isAuthError ? 'DeepSeek API key rejected or unauthorized' : 'AI insights temporarily unavailable',
+      message: isAuthError ? 'Please check DEEPSEEK_API_KEY and permissions' : 'Please try again later',
+      generatedAt: new Date().toISOString(),
+      authError: isAuthError
     };
     insightsCache.payload = payload;
     insightsCache.generatedAt = payload.generatedAt;
@@ -411,6 +445,25 @@ app.post('/api/ai-insights/refresh', async (req, res) => {
       success: false,
       error: 'AI insights refresh failed',
       message: 'Please try again later'
+    });
+  }
+});
+
+// Health check for DeepSeek API key
+app.get('/api/ai-insights/health', async (req, res) => {
+  try {
+    const result = await checkDeepSeekHealth();
+    const status = result.status || (result.ok ? 200 : 503);
+    res.status(status).json({
+      success: result.ok,
+      status,
+      error: result.error || null
+    });
+  } catch (error) {
+    console.error('AI health check error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'AI health check failed'
     });
   }
 });
