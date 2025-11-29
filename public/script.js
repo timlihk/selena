@@ -65,6 +65,7 @@ class BabyTracker {
         this.defaultHomeTimezone = 'Asia/Hong_Kong';
         this.homeTimezone = this.defaultHomeTimezone;
         this.cachedAIInsights = null;
+        this.profileAutoSaveTimer = null;
         this.init();
     }
 
@@ -363,6 +364,7 @@ class BabyTracker {
         return `
             <div class="profile-section">
                 <h3>👶 Create Baby Profile</h3>
+                <div id="profileStatus" class="profile-status"></div>
                 <form id="createProfileForm" class="profile-form">
                     <div class="form-group">
                         <label for="babyName">Baby Name *</label>
@@ -389,6 +391,7 @@ class BabyTracker {
 
         return `
             <form id="updateProfileForm" class="profile-form">
+                <div id="profileStatus" class="profile-status"></div>
                 <div class="form-group">
                     <label for="babyName">Baby Name *</label>
                     <input type="text" id="babyName" name="babyName" required placeholder="Enter baby's name" value="${this.escapeHtml(name)}">
@@ -548,6 +551,7 @@ class BabyTracker {
                 e.preventDefault();
                 this.saveBabyProfile(createForm, container);
             });
+            this.setupProfileAutosave(createForm, container);
         }
 
         const updateForm = container.querySelector('#updateProfileForm');
@@ -557,6 +561,7 @@ class BabyTracker {
                 e.preventDefault();
                 this.saveBabyProfile(updateForm, container);
             });
+            this.setupProfileAutosave(updateForm, container);
         }
 
         const measurementForm = container.querySelector('#addMeasurementForm');
@@ -569,7 +574,29 @@ class BabyTracker {
         }
     }
 
-    async saveBabyProfile(form, container) {
+    setProfileStatus(container, message, type = 'info') {
+        const statusEl = container.querySelector('#profileStatus');
+        if (!statusEl) return;
+        statusEl.textContent = message || '';
+        statusEl.className = `profile-status ${type}`;
+    }
+
+    setupProfileAutosave(form, container) {
+        const debouncedSave = () => {
+            clearTimeout(this.profileAutoSaveTimer);
+            this.profileAutoSaveTimer = setTimeout(() => {
+                this.saveBabyProfile(form, container, { silent: true, refreshAfterSave: false });
+            }, 800);
+        };
+
+        form.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', debouncedSave);
+            input.addEventListener('change', debouncedSave);
+        });
+    }
+
+    async saveBabyProfile(form, container, options = {}) {
+        const { silent = false, refreshAfterSave = true } = options;
         const nameInput = form.querySelector('#babyName');
         const dobInput = form.querySelector('#dateOfBirth');
         const saveButton = form.querySelector('button[type="submit"]');
@@ -578,11 +605,17 @@ class BabyTracker {
         const dateOfBirth = dobInput ? dobInput.value : '';
 
         if (!name || !dateOfBirth) {
-            alert('Please enter the baby name and date of birth');
+            if (!silent) {
+                alert('Please enter the baby name and date of birth');
+            }
+            this.setProfileStatus(container, 'Name and date of birth are required', 'error');
             return;
         }
 
-        this.setButtonLoading(saveButton, true, 'Saving...');
+        this.setProfileStatus(container, 'Saving...', 'info');
+        if (!silent) {
+            this.setButtonLoading(saveButton, true, 'Saving...');
+        }
 
         try {
             const response = await fetch('/api/baby-profile', {
@@ -591,17 +624,27 @@ class BabyTracker {
                 body: JSON.stringify({ name, dateOfBirth })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Failed to save baby profile');
+            const json = await response.json().catch(() => ({}));
+            if (!response.ok || !json.success) {
+                const message = json.error || 'Failed to save baby profile';
+                throw new Error(message);
             }
 
-            await this.loadBabyProfileData(container);
+            this.setProfileStatus(container, 'Saved', 'success');
+
+            if (refreshAfterSave) {
+                await this.loadBabyProfileData(container);
+            }
         } catch (error) {
             console.error('Failed to save baby profile:', error);
-            alert(error.message || 'Could not save baby profile');
+            this.setProfileStatus(container, error.message || 'Could not save baby profile', 'error');
+            if (!silent) {
+                alert(error.message || 'Could not save baby profile');
+            }
         } finally {
-            this.setButtonLoading(saveButton, false);
+            if (!silent) {
+                this.setButtonLoading(saveButton, false);
+            }
         }
     }
 
