@@ -7,7 +7,7 @@ class DeepSeekEnhancedAnalyzer {
         this.timezone = timezone;
         this.apiKey = apiKey;
         this.apiBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
-        this.minDataDays = 14;
+        this.minDataDays = 10; // allow preview with trimmed lookback
         this.model = options.model || 'deepseek-chat';
         // Lower temperature (0.1) for consistent, reliable medical advice
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.1;
@@ -27,8 +27,13 @@ class DeepSeekEnhancedAnalyzer {
     }
 
     getDaysOfData() {
-        if (this.events.length === 0) return 0;
-        const timestamps = this.events.map(e => new Date(e.timestamp).getTime());
+        return this.computeDays(this.events);
+    }
+
+    // Compute days from any event array (for full vs lookback comparison)
+    computeDays(events) {
+        if (!events || events.length === 0) return 0;
+        const timestamps = events.map(e => new Date(e.timestamp).getTime());
         const oldest = Math.min(...timestamps);
         const newest = Math.max(...timestamps);
         return Math.floor((newest - oldest) / (1000 * 60 * 60 * 24)) + 1;
@@ -38,6 +43,7 @@ class DeepSeekEnhancedAnalyzer {
     extractStatisticalPatterns() {
         const { recentEvents, olderEventsSummary } = this.splitEventsByLookback();
         const originalEvents = this.events;
+        const fullEvents = this.events;
         this.events = recentEvents;
 
         const patterns = {
@@ -49,6 +55,9 @@ class DeepSeekEnhancedAnalyzer {
             overallStats: this.getOverallStats(),
             olderSummary: olderEventsSummary
         };
+
+        // For sufficiency, consider full history
+        patterns.fullDataDays = this.computeDays(fullEvents);
 
         this.events = originalEvents;
         return patterns;
@@ -342,10 +351,10 @@ class DeepSeekEnhancedAnalyzer {
 
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
-        const dataDays = this.getDaysOfData();
+        const dataDays = context.fullDataDays || this.getDaysOfData();
         console.log(`[DeepSeek] Starting analysis: ${dataDays} days of data, API key: ${this.apiKey ? 'present' : 'MISSING'}, min required: ${this.minDataDays}`);
 
-        if (!this.hasSufficientData()) {
+        if (dataDays < this.minDataDays) {
             console.log(`[DeepSeek] Insufficient data: ${dataDays} < ${this.minDataDays} days`);
             return {
                 insights: [{
@@ -584,13 +593,14 @@ Provide: 2-3 insights (priority 1=urgent to 5), any alerts, tonight's plan. JSON
     // Generate combined insights (statistical + AI)
     async generateEnhancedInsights(context = {}) {
         const statisticalInsights = this.extractStatisticalPatterns();
-        // Pass precomputed patterns to avoid duplicate computation
+        // Pass precomputed patterns and full data days for sufficiency check
         const aiInsights = await this.analyzeWithDeepSeek({
             ...context,
             goal: context.goal || this.goal,
             concerns: context.concerns || this.concerns,
             olderSummary: statisticalInsights.olderSummary,
-            precomputedPatterns: statisticalInsights
+            precomputedPatterns: statisticalInsights,
+            fullDataDays: statisticalInsights.fullDataDays
         });
 
         return {
