@@ -19,6 +19,7 @@ class DeepSeekEnhancedAnalyzer {
         this.goal = options.goal || null;
         this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
         this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 30;
+        this.rawEventLimit = Number.isFinite(parseInt(options.rawEventLimit, 10)) ? parseInt(options.rawEventLimit, 10) : 1000;
     }
 
     hasSufficientData() {
@@ -416,7 +417,7 @@ class DeepSeekEnhancedAnalyzer {
         // Sanitize user inputs
         const goal = this.sanitizePromptInput(context.goal || this.goal || '') || 'balanced development';
         const concerns = (context.concerns || this.concerns || [])
-            .map(c => this.sanitizePromptInput(c, 50)).filter(Boolean).join(', ') || 'none';
+            .map(c => this.sanitizePromptInput(c, 50)).filter(Boolean);
 
         // Get age norms and trends
         const norms = this.getAgeBasedRecommendations(ageWeeks);
@@ -430,19 +431,83 @@ class DeepSeekEnhancedAnalyzer {
         const avgWakeMin = Math.round((patterns.wakeWindows.avgWakeWindow || 0) * 60);
         const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
 
-        // Concise data block - key metrics only
-        const data = `Baby: ${ageLabel}, ${measurement}
-Goal: ${goal} | Concerns: ${concerns}
+        const anchors = {
+            medianBedtime: this.medianTimestampForType('sleep_start_time'),
+            medianFirstNapStart: this.medianFirstEventTime('sleep'),
+            medianFeedIntervalMinutes: this.medianIntervalMinutes('milk')
+        };
 
-Norms(${ageLabel}): sleep ${norms.sleepHoursMin}-${norms.sleepHoursMax}h, wake ${norms.wakeWindowMin}-${norms.wakeWindowMax}h, feeds ${norms.feedsPerDayMin}-${norms.feedsPerDayMax}x @ ${norms.feedAmountMin}-${norms.feedAmountMax}ml
+        const extremes = {
+            shortestNapMin: this.extremeAmount('sleep', 'min'),
+            longestNapMin: this.extremeAmount('sleep', 'max'),
+            longestWakeMinutes: this.longestWakeWindowMinutes()
+        };
 
-Last ${days}d: feeds ${feedsPerDay}/day @ ${avgFeedMl}ml, sleep avg ${avgSleepMin}min, wake ${avgWakeMin}min, diapers ${diapersPerDay}/day
-${trends.feeding ? `Trends: feed ${trends.feeding}, sleep ${trends.sleep || 'stable'}, diaper ${trends.diaper || 'stable'}` : ''}`;
+        const contextPayload = {
+            profile: {
+                ageWeeks,
+                ageLabel,
+                measurement,
+                timezone: context.homeTimezone || this.timezone,
+                goal,
+                concerns
+            },
+            window: {
+                days,
+                lookbackDays: this.lookbackDays
+            },
+            norms,
+            trends,
+            anchors,
+            extremes,
+            stats: {
+                feedsPerDay,
+                avgFeedMl,
+                avgSleepMin,
+                avgWakeMin,
+                diapersPerDay,
+                feedingPatterns: patterns.feedingPatterns,
+                sleepDistribution: patterns.sleepDistribution,
+                wakeWindows: patterns.wakeWindows,
+                diaperPatterns: patterns.diaperPatterns
+            },
+            olderSummary: patterns.olderSummary || null,
+            recentEvents: (context.recentEvents || []).slice(-this.rawEventLimit)
+        };
 
-        // Minimal prompt - no JSON schema (model knows the format from system prompt)
-        return `${data}
+        return `You are a pediatric sleep/feeding coach. Read the JSON context and return ONLY JSON (no markdown).
+Context:
+${JSON.stringify(contextPayload)}
 
-Provide: 2-3 insights (priority 1=urgent to 5), any alerts, tonight's plan. JSON only.`;
+Respond with:
+{
+  "insights": [
+    {
+      "title": "...",
+      "description": "...",
+      "type": "developmental|sleep|feeding|health|general",
+      "confidence": 0.0-1.0,
+      "recommendation": "...",
+      "whyItMatters": "...",
+      "priority": 1-5
+    }
+  ],
+  "alerts": [
+    {
+      "title": "...",
+      "severity": "low|medium|high",
+      "note": "...",
+      "priority": 1-5
+    }
+  ],
+  "miniPlan": {
+    "tonightBedtimeTarget": "HH:MM local",
+    "nextWakeWindows": ["XhYm", "XhYm"],
+    "feedingNote": "..."
+  },
+  "measureOfSuccess": "what to check tomorrow"
+}
+Limit insights to 3 and alerts to 2. Avoid medical diagnosis; suggest contacting a pediatrician if red flags appear.`;
     }
 
     formatMeasurementCompact(m) {
