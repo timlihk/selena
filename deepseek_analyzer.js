@@ -412,14 +412,14 @@ class DeepSeekEnhancedAnalyzer {
         // Get age norms and trends
         const norms = this.getAgeBasedRecommendations(ageWeeks);
         const trends = this.calculateTrends();
-        const days = patterns.overallStats.dataDays;
+        const days = patterns.overallStats.dataDays || 1; // Prevent division by zero
 
-        // Compute key metrics for comparison
-        const feedsPerDay = (patterns.feedingPatterns.totalFeeds / days).toFixed(1);
-        const avgFeedMl = Math.round(patterns.feedingPatterns.avgAmount);
-        const avgSleepMin = Math.round(patterns.sleepDistribution.avgSleepDuration);
-        const avgWakeMin = Math.round(patterns.wakeWindows.avgWakeWindow * 60);
-        const diapersPerDay = (patterns.diaperPatterns.totalDiapers / days).toFixed(1);
+        // Compute key metrics for comparison (with NaN protection)
+        const feedsPerDay = days > 0 ? (patterns.feedingPatterns.totalFeeds / days).toFixed(1) : '0';
+        const avgFeedMl = Math.round(patterns.feedingPatterns.avgAmount || 0);
+        const avgSleepMin = Math.round(patterns.sleepDistribution.avgSleepDuration || 0);
+        const avgWakeMin = Math.round((patterns.wakeWindows.avgWakeWindow || 0) * 60);
+        const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
 
         // Concise data block - key metrics only
         const data = `Baby: ${ageLabel}, ${measurement}

@@ -178,7 +178,8 @@ let lastManualRefreshAt = 0;
 // Generate cache key from goal/concerns
 function getInsightsCacheKey(goal, concerns) {
   const normalizedGoal = (goal || '').trim().toLowerCase();
-  const normalizedConcerns = (concerns || []).map(c => c.trim().toLowerCase()).sort().join(',');
+  const concernsArray = Array.isArray(concerns) ? concerns : [];
+  const normalizedConcerns = concernsArray.map(c => (c || '').trim().toLowerCase()).filter(Boolean).sort().join(',');
   return `${normalizedGoal}|${normalizedConcerns}`;
 }
 
