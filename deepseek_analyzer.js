@@ -54,9 +54,13 @@ class DeepSeekEnhancedAnalyzer {
             feedingPatterns: this.analyzeFeedingPatterns(),
             diaperPatterns: this.analyzeDiaperPatterns(),
             overallStats: this.getOverallStats(),
-            olderSummary: olderEventsSummary,
-            totalSleepMinutes: this.sumAmountsByType(recentEvents, 'sleep')
+            olderSummary: olderEventsSummary
         };
+
+        const sleepTotals = this.getSleepTotals(recentEvents);
+        patterns.totalSleepMinutes = sleepTotals.totalMinutes;
+        patterns.sleepDaysUsed = sleepTotals.daysUsed;
+        patterns.recentEventsLimited = this.sliceRecentRawEvents(recentEvents);
 
         // For sufficiency, consider full history
         patterns.fullDataDays = this.computeDays(fullEvents);
@@ -432,6 +436,48 @@ class DeepSeekEnhancedAnalyzer {
             .reduce((sum, e) => sum + e.amount, 0);
     }
 
+    getSleepTotals(events) {
+        const dateKey = (ts) => new Intl.DateTimeFormat('en-CA', {
+            timeZone: this.timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(new Date(ts));
+
+        const todayKey = dateKey(Date.now());
+        const totalsByDay = {};
+
+        events
+            .filter(e => e.type === 'sleep' && Number.isFinite(e.amount))
+            .forEach(e => {
+                const key = dateKey(e.timestamp || e.sleep_start_time || Date.now());
+                totalsByDay[key] = (totalsByDay[key] || 0) + e.amount;
+            });
+
+        let daysUsed = 0;
+        let totalMinutes = 0;
+        Object.entries(totalsByDay).forEach(([key, minutes]) => {
+            if (key === todayKey) return; // skip incomplete current day
+            daysUsed += 1;
+            totalMinutes += minutes;
+        });
+
+        // If excluding today leaves no days, fall back to using all days
+        if (daysUsed === 0) {
+            Object.values(totalsByDay).forEach(minutes => {
+                daysUsed += 1;
+                totalMinutes += minutes;
+            });
+        }
+
+        return { totalMinutes, daysUsed };
+    }
+
+    // Slice recent events to rawEventLimit
+    sliceRecentRawEvents(events) {
+        return events.slice(-this.rawEventLimit);
+    }
+
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
         const dataDays = context.fullDataDays || this.getDaysOfData();
@@ -514,7 +560,8 @@ class DeepSeekEnhancedAnalyzer {
         const avgWakeMin = Math.round((patterns.wakeWindows.avgWakeWindow || 0) * 60);
         const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
         const totalSleepMin = Math.round(patterns.totalSleepMinutes || 0);
-        const sleepHoursPerDay = days > 0 ? (totalSleepMin / days / 60).toFixed(1) : '0';
+        const sleepDays = patterns.sleepDaysUsed || days;
+        const sleepHoursPerDay = sleepDays > 0 ? (totalSleepMin / sleepDays / 60).toFixed(1) : '0';
 
         const anchors = {
             medianBedtime: this.medianTimestampForType?.('sleep_start_time') || null,
