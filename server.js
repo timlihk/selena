@@ -438,16 +438,6 @@ app.get('/api/ai-insights', async (req, res) => {
 // Manual refresh endpoint with token + cooldown
 app.post('/api/ai-insights/refresh', async (req, res) => {
   try {
-    const refreshToken = process.env.DEEPSEEK_REFRESH_TOKEN || null;
-    if (!refreshToken) {
-      return res.status(404).json({ success: false, error: 'Manual refresh not enabled' });
-    }
-
-    const tokenFromRequest = req.headers['x-refresh-token'] || req.query.token;
-    if (tokenFromRequest !== refreshToken) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
-
     const now = Date.now();
     if (lastManualRefreshAt && (now - lastManualRefreshAt) < MANUAL_REFRESH_COOLDOWN_MS) {
       const waitSeconds = Math.ceil((MANUAL_REFRESH_COOLDOWN_MS - (now - lastManualRefreshAt)) / 1000);
