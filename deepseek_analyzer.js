@@ -54,7 +54,8 @@ class DeepSeekEnhancedAnalyzer {
             feedingPatterns: this.analyzeFeedingPatterns(),
             diaperPatterns: this.analyzeDiaperPatterns(),
             overallStats: this.getOverallStats(),
-            olderSummary: olderEventsSummary
+            olderSummary: olderEventsSummary,
+            totalSleepMinutes: this.sumAmountsByType(recentEvents, 'sleep')
         };
 
         // For sufficiency, consider full history
@@ -424,6 +425,13 @@ class DeepSeekEnhancedAnalyzer {
         return Math.round(longest);
     }
 
+    // Sum amounts for a given event type
+    sumAmountsByType(events, type) {
+        return events
+            .filter(e => e.type === type && Number.isFinite(e.amount))
+            .reduce((sum, e) => sum + e.amount, 0);
+    }
+
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
         const dataDays = context.fullDataDays || this.getDaysOfData();
@@ -505,6 +513,8 @@ class DeepSeekEnhancedAnalyzer {
         const avgSleepMin = Math.round(patterns.sleepDistribution.avgSleepDuration || 0);
         const avgWakeMin = Math.round((patterns.wakeWindows.avgWakeWindow || 0) * 60);
         const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
+        const totalSleepMin = Math.round(patterns.totalSleepMinutes || 0);
+        const sleepHoursPerDay = days > 0 ? (totalSleepMin / days / 60).toFixed(1) : '0';
 
         const anchors = {
             medianBedtime: this.medianTimestampForType?.('sleep_start_time') || null,
@@ -541,6 +551,8 @@ class DeepSeekEnhancedAnalyzer {
                 avgSleepMin,
                 avgWakeMin,
                 diapersPerDay,
+                sleepHoursPerDay,
+                totalSleepMin,
                 feedingPatterns: patterns.feedingPatterns,
                 sleepDistribution: patterns.sleepDistribution,
                 wakeWindows: patterns.wakeWindows,
