@@ -332,20 +332,7 @@ class BabyTracker {
         container.innerHTML = `
             <div class="profile-section">
                 <h3>👶 Basic Information</h3>
-                <div class="profile-info">
-                    <div class="profile-info-item">
-                        <label>Name</label>
-                        <div class="value">${this.escapeHtml(profile.name || 'Not set')}</div>
-                    </div>
-                    <div class="profile-info-item">
-                        <label>Date of Birth</label>
-                        <div class="value">${profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'Not set'}</div>
-                    </div>
-                    <div class="profile-info-item">
-                        <label>Age</label>
-                        <div class="value">${age ? `${age.weeks} weeks ${age.days} days` : 'Not calculated'}</div>
-                    </div>
-                </div>
+                ${this.renderProfileForm(profile, age)}
             </div>
 
             <div class="profile-section">
@@ -361,11 +348,6 @@ class BabyTracker {
             <div class="profile-section">
                 <h3>📈 Measurement History</h3>
                 ${this.renderMeasurementHistory()}
-            </div>
-
-            <div class="profile-actions">
-                <button class="btn-save" onclick="babyTracker.editProfile()">✏️ Edit Profile</button>
-                <button class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Close</button>
             </div>
         `;
 
@@ -396,6 +378,34 @@ class BabyTracker {
                     </div>
                 </form>
             </div>
+        `;
+    }
+
+    renderProfileForm(profile, age) {
+        const today = new Date().toISOString().split('T')[0];
+        const name = profile?.name || '';
+        const dob = profile?.date_of_birth ? new Date(profile.date_of_birth).toISOString().split('T')[0] : '';
+        const ageLabel = age ? `${age.weeks} weeks ${age.days} days` : 'Not calculated';
+
+        return `
+            <form id="updateProfileForm" class="profile-form">
+                <div class="form-group">
+                    <label for="babyName">Baby Name *</label>
+                    <input type="text" id="babyName" name="babyName" required placeholder="Enter baby's name" value="${this.escapeHtml(name)}">
+                </div>
+                <div class="form-group">
+                    <label for="dateOfBirth">Date of Birth *</label>
+                    <input type="date" id="dateOfBirth" name="dateOfBirth" required max="${today}" value="${dob}">
+                </div>
+                <div class="form-group">
+                    <label>Age</label>
+                    <div class="value">${this.escapeHtml(ageLabel)}</div>
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="btn-save">💾 Save Profile</button>
+                    <button type="button" class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Close</button>
+                </div>
+            </form>
         `;
     }
 
@@ -537,6 +547,15 @@ class BabyTracker {
             createForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.saveBabyProfile(createForm, container);
+            });
+        }
+
+        const updateForm = container.querySelector('#updateProfileForm');
+        if (updateForm && !updateForm.dataset.bound) {
+            updateForm.dataset.bound = 'true';
+            updateForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveBabyProfile(updateForm, container);
             });
         }
 
