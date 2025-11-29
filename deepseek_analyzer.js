@@ -233,6 +233,17 @@ class DeepSeekEnhancedAnalyzer {
         return byWindow;
     }
 
+    // Sanitize user input to prevent prompt injection
+    sanitizePromptInput(input, maxLength = 200) {
+        if (!input || typeof input !== 'string') return '';
+        return input
+            .replace(/[<>{}[\]]/g, '')      // Remove potential markup/code chars
+            .replace(/[\r\n]+/g, ' ')        // Remove newlines
+            .replace(/\s+/g, ' ')            // Normalize whitespace
+            .trim()
+            .substring(0, maxLength);
+    }
+
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
         const dataDays = this.getDaysOfData();
@@ -297,8 +308,13 @@ class DeepSeekEnhancedAnalyzer {
         const dob = context.profile?.date_of_birth || 'unknown';
         const tz = context.homeTimezone || this.timezone;
         const measurement = this.formatMeasurement(context.latestMeasurement);
-        const goal = context.goal || this.goal || 'balanced sleep and feeds';
-        const concerns = context.concerns && context.concerns.length > 0 ? context.concerns.join(', ') : 'none';
+        // Sanitize user-provided inputs to prevent prompt injection
+        const rawGoal = context.goal || this.goal || '';
+        const goal = this.sanitizePromptInput(rawGoal) || 'balanced sleep and feeds';
+        const rawConcerns = context.concerns && context.concerns.length > 0
+            ? context.concerns.map(c => this.sanitizePromptInput(c, 100)).filter(Boolean)
+            : [];
+        const concerns = rawConcerns.length > 0 ? rawConcerns.join(', ') : 'none';
 
         const summary = `
 Profile:
@@ -333,38 +349,52 @@ Diaper:
 - Total diapers: ${patterns.diaperPatterns.totalDiapers}
         `;
 
-        return `You are an expert pediatric sleep consultant and baby development specialist.
-Ground rules:
-- Use current pediatric guidelines for a ${ageLabel} infant.
-- Be concise, reassuring, and specific.
-- Return ONLY JSON (no markdown, no extra text).
+        return `You are an expert pediatric sleep consultant analyzing data for a ${ageLabel} infant.
 
-BABY DATA SUMMARY:
+PRIORITY ORDER (address in this order):
+1. SAFETY: Breathing concerns, feeding adequacy, hydration (wet diapers)
+2. HEALTH: Sleep totals, growth patterns, developmental red flags
+3. OPTIMIZATION: Schedule improvements, routine suggestions
+
+CRITICAL THRESHOLDS TO FLAG:
+- Total daily sleep <10h or >18h for this age
+- No wet diaper in 6+ hours
+- Feeding gaps >5 hours (daytime) for infant <3 months
+- Weight/growth concerns if measurements provided
+
+GUIDELINES:
+- Be SPECIFIC: "Try bedtime at 7:30pm" not "establish a routine"
+- Be ACTIONABLE: Give exact times, amounts, or steps
+- Be REASSURING: Most variations are normal; avoid alarm unless warranted
+- Return ONLY valid JSON (no markdown, no extra text)
+
+BABY DATA:
 ${summary}
 
-Respond with strict JSON:
+Return JSON:
 {
   "insights": [
     {
-      "title": "string",
-      "description": "string",
-      "type": "developmental|sleep|feeding|health|general",
+      "title": "short title",
+      "description": "1-2 sentences",
+      "type": "safety|developmental|sleep|feeding|health|general",
+      "priority": 1-5 (1=most urgent),
       "confidence": 0.0-1.0,
-      "recommendation": "actionable next step",
+      "recommendation": "specific actionable step",
       "whyItMatters": "short rationale"
     }
   ],
-  "summary": "overall summary",
-  "developmentalStage": "brief stage note",
+  "summary": "1-2 sentence overall assessment",
+  "developmentalStage": "brief note on expected development for age",
   "alerts": [
     {
-      "title": "potential risk/concern",
+      "title": "concern title",
       "severity": "low|medium|high",
       "note": "short rationale"
     }
   ],
   "miniPlan": {
-    "tonightBedtimeTarget": "HH:MM local",
+    "tonightBedtimeTarget": "HH:MM",
     "nextWakeWindows": ["XhYm", "XhYm"],
     "feedingNote": "short guidance"
   }

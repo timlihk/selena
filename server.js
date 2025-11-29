@@ -164,13 +164,27 @@ const PORT = process.env.PORT || 3000;
 // AI insights scheduling and caching
 const INSIGHTS_CACHE_TTL_MS = 23 * 60 * 60 * 1000; // refresh roughly once a day
 const INSIGHTS_REFRESH_HOUR = 3; // 03:00 server local time
+const INSIGHTS_INVALIDATION_THRESHOLD = 10; // Invalidate cache after N new events
 let insightsCache = {
   payload: null,
   generatedAt: null,
-  refreshing: false
+  refreshing: false,
+  eventCountAtGeneration: 0
 };
 const MANUAL_REFRESH_COOLDOWN_MS = parseInt(process.env.DEEPSEEK_REFRESH_COOLDOWN_MS || `${5 * 60 * 1000}`, 10);
 let lastManualRefreshAt = 0;
+
+// Track current event count for cache invalidation
+async function shouldInvalidateInsightsCache() {
+  if (!insightsCache.generatedAt) return true;
+  try {
+    const events = await Event.getAll();
+    const newEventCount = events.length - insightsCache.eventCountAtGeneration;
+    return newEventCount >= INSIGHTS_INVALIDATION_THRESHOLD;
+  } catch {
+    return false;
+  }
+}
 
 // Trust proxy for Railway deployment (required for rate limiting)
 app.set('trust proxy', 1);
@@ -270,16 +284,24 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
   console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? apiKey.substring(0, 8) + '...' : 'none'}`);
 
   try {
-    const events = await Event.getAll();
-    const ageWeeks = await getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10));
-    let profile = null;
-    let latestMeasurement = null;
-    try {
-      profile = await BabyProfile.getProfile();
-      latestMeasurement = await BabyProfile.getLatestMeasurement();
-    } catch (profileErr) {
-      console.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
-    }
+    // Parallel fetch for better performance
+    const [events, ageWeeks, profileData] = await Promise.all([
+      Event.getAll(),
+      getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10)),
+      (async () => {
+        try {
+          const [profile, latestMeasurement] = await Promise.all([
+            BabyProfile.getProfile(),
+            BabyProfile.getLatestMeasurement()
+          ]);
+          return { profile, latestMeasurement };
+        } catch (profileErr) {
+          console.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
+          return { profile: null, latestMeasurement: null };
+        }
+      })()
+    ]);
+    const { profile, latestMeasurement } = profileData;
     console.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
     const analyzer = new DeepSeekEnhancedAnalyzer(
       events,
@@ -313,6 +335,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
 
     insightsCache.payload = payload;
     insightsCache.generatedAt = payload.generatedAt;
+    insightsCache.eventCountAtGeneration = events.length;
     return payload;
   } catch (error) {
     console.error('AI insights generation failed:', error);
@@ -342,16 +365,25 @@ function getNextInsightsRefreshDelay() {
   return nextRun.getTime() - now.getTime();
 }
 
+let dailyRefreshTimer = null;
+
 function scheduleDailyAIInsights() {
   const scheduleNext = () => {
     const delay = getNextInsightsRefreshDelay();
-    setTimeout(async () => {
+    dailyRefreshTimer = setTimeout(async () => {
       await generateAndCacheInsights('scheduled');
       scheduleNext();
     }, delay);
   };
 
   scheduleNext();
+}
+
+function clearDailyRefreshTimer() {
+  if (dailyRefreshTimer) {
+    clearTimeout(dailyRefreshTimer);
+    dailyRefreshTimer = null;
+  }
 }
 
 async function getEventsHandler(req, res) {
@@ -417,10 +449,11 @@ app.get('/api/ai-insights', async (req, res) => {
       : [];
 
     const hasMissingKeyError = insightsCache.payload?.aiEnhanced?.missingApiKey === true;
+    const newDataInvalidation = await shouldInvalidateInsightsCache();
     const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
-      (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError;
+      (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError || newDataInvalidation;
 
-    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, missingKeyError=${hasMissingKeyError}, shouldRegenerate=${shouldRegenerate}`);
+    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, newDataInvalidation=${newDataInvalidation}, shouldRegenerate=${shouldRegenerate}`);
 
     const payload = shouldRegenerate
       ? await generateAndCacheInsights('api', { goal, concerns })
@@ -1366,6 +1399,8 @@ if (require.main === module) {
   // (not when imported by tests or other modules)
   function gracefulShutdown(signal) {
     console.log(`\n${signal} received. Shutting down gracefully...`);
+    // Clear scheduled timers to prevent memory leaks
+    clearDailyRefreshTimer();
     if (server) {
       server.close(() => {
         console.log('Server closed.');
