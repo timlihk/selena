@@ -841,4 +841,269 @@ Limit: max 3 insights, max 2 alerts.`;
     }
 }
 
-module.exports = DeepSeekEnhancedAnalyzer;
+// Real-time pattern detection for immediate safety alerts (no AI needed)
+class PatternDetector {
+    constructor(events, timezone, ageWeeks = 8) {
+        this.events = events;
+        this.timezone = timezone;
+        this.ageWeeks = ageWeeks;
+    }
+
+    // Get age-appropriate thresholds
+    getThresholds() {
+        if (this.ageWeeks <= 4) {
+            return {
+                maxFeedingGapHours: 4,
+                minSleepHoursPerDay: 14,
+                maxSleepHoursPerDay: 19,
+                minDiapersPerDay: 6,
+                minFeedsPerDay: 8
+            };
+        } else if (this.ageWeeks <= 12) {
+            return {
+                maxFeedingGapHours: 5,
+                minSleepHoursPerDay: 14,
+                maxSleepHoursPerDay: 17,
+                minDiapersPerDay: 5,
+                minFeedsPerDay: 6
+            };
+        } else {
+            return {
+                maxFeedingGapHours: 6,
+                minSleepHoursPerDay: 12,
+                maxSleepHoursPerDay: 16,
+                minDiapersPerDay: 4,
+                minFeedsPerDay: 5
+            };
+        }
+    }
+
+    // Detect all anomalies - returns array of alerts
+    detectAnomalies() {
+        const alerts = [];
+        const thresholds = this.getThresholds();
+
+        // Check feeding gaps
+        const feedingGap = this.detectFeedingGaps(thresholds.maxFeedingGapHours);
+        if (feedingGap) alerts.push(feedingGap);
+
+        // Check daily sleep
+        const sleepAlert = this.detectLowSleep(thresholds.minSleepHoursPerDay);
+        if (sleepAlert) alerts.push(sleepAlert);
+
+        // Check diaper output
+        const diaperAlert = this.detectLowDiapers(thresholds.minDiapersPerDay);
+        if (diaperAlert) alerts.push(diaperAlert);
+
+        // Check feeding frequency
+        const feedingAlert = this.detectLowFeedings(thresholds.minFeedsPerDay);
+        if (feedingAlert) alerts.push(feedingAlert);
+
+        // Check for long wake windows
+        const wakeAlert = this.detectLongWakeWindow();
+        if (wakeAlert) alerts.push(wakeAlert);
+
+        return alerts;
+    }
+
+    // Detect feeding gaps longer than threshold
+    detectFeedingGaps(maxHours) {
+        const feedEvents = this.events
+            .filter(e => e.type === 'milk')
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (feedEvents.length < 2) return null;
+
+        // Check gap from last feed to now
+        const lastFeed = feedEvents[feedEvents.length - 1];
+        const lastFeedTime = new Date(lastFeed.timestamp);
+        const now = new Date();
+        const hoursSinceLastFeed = (now - lastFeedTime) / (1000 * 60 * 60);
+
+        if (hoursSinceLastFeed > maxHours) {
+            return {
+                type: 'feeding_gap',
+                severity: hoursSinceLastFeed > maxHours + 2 ? 'high' : 'medium',
+                title: 'Long feeding gap',
+                message: `It's been ${hoursSinceLastFeed.toFixed(1)} hours since last feed (threshold: ${maxHours}h)`,
+                lastFeedTime: lastFeedTime.toISOString(),
+                hoursAgo: Math.round(hoursSinceLastFeed * 10) / 10,
+                priority: 1,
+                actionable: true
+            };
+        }
+
+        // Check historical gaps in last 24 hours
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+        const recentFeeds = feedEvents.filter(e => new Date(e.timestamp) >= oneDayAgo);
+
+        let maxGap = 0;
+        let maxGapStart = null;
+        for (let i = 1; i < recentFeeds.length; i++) {
+            const gap = (new Date(recentFeeds[i].timestamp) - new Date(recentFeeds[i-1].timestamp)) / (1000 * 60 * 60);
+            if (gap > maxGap) {
+                maxGap = gap;
+                maxGapStart = recentFeeds[i-1].timestamp;
+            }
+        }
+
+        if (maxGap > maxHours) {
+            return {
+                type: 'feeding_gap_historical',
+                severity: 'low',
+                title: 'Long feeding gap today',
+                message: `${maxGap.toFixed(1)}h gap detected in last 24 hours`,
+                gapStartTime: maxGapStart,
+                gapHours: Math.round(maxGap * 10) / 10,
+                priority: 3,
+                actionable: false
+            };
+        }
+
+        return null;
+    }
+
+    // Detect low daily sleep in last complete day
+    detectLowSleep(minHours) {
+        const dateKey = (ts) => new Intl.DateTimeFormat('en-CA', {
+            timeZone: this.timezone,
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date(ts));
+
+        const todayKey = dateKey(Date.now());
+        const sleepByDay = {};
+
+        this.events
+            .filter(e => e.type === 'sleep' && Number.isFinite(e.amount))
+            .forEach(e => {
+                const key = dateKey(e.timestamp);
+                sleepByDay[key] = (sleepByDay[key] || 0) + e.amount;
+            });
+
+        // Check yesterday (most recent complete day)
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = dateKey(yesterday);
+
+        const yesterdaySleepMin = sleepByDay[yesterdayKey] || 0;
+        const yesterdaySleepHours = yesterdaySleepMin / 60;
+
+        if (yesterdaySleepHours > 0 && yesterdaySleepHours < minHours) {
+            return {
+                type: 'low_sleep',
+                severity: yesterdaySleepHours < minHours - 2 ? 'high' : 'medium',
+                title: 'Low sleep yesterday',
+                message: `Only ${yesterdaySleepHours.toFixed(1)} hours of sleep yesterday (minimum: ${minHours}h)`,
+                date: yesterdayKey,
+                sleepHours: Math.round(yesterdaySleepHours * 10) / 10,
+                priority: 2,
+                actionable: true
+            };
+        }
+
+        return null;
+    }
+
+    // Detect low diaper output in last 24 hours
+    detectLowDiapers(minCount) {
+        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+        const recentDiapers = this.events.filter(e =>
+            e.type === 'diaper' && new Date(e.timestamp) >= oneDayAgo
+        );
+
+        const count = recentDiapers.length;
+        const wetCount = recentDiapers.filter(e => e.subtype === 'pee' || e.subtype === 'both').length;
+
+        if (count < minCount) {
+            return {
+                type: 'low_diapers',
+                severity: count < minCount - 2 ? 'high' : 'medium',
+                title: 'Low diaper output',
+                message: `Only ${count} diapers in last 24 hours (minimum: ${minCount})`,
+                count: count,
+                wetCount: wetCount,
+                priority: count < 3 ? 1 : 2,
+                actionable: true
+            };
+        }
+
+        // Specifically check wet diapers (hydration indicator)
+        if (wetCount < 4) {
+            return {
+                type: 'low_wet_diapers',
+                severity: wetCount < 2 ? 'high' : 'medium',
+                title: 'Few wet diapers',
+                message: `Only ${wetCount} wet diapers in last 24 hours - monitor hydration`,
+                wetCount: wetCount,
+                priority: wetCount < 2 ? 1 : 2,
+                actionable: true
+            };
+        }
+
+        return null;
+    }
+
+    // Detect low feeding frequency in last 24 hours
+    detectLowFeedings(minCount) {
+        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+        const recentFeeds = this.events.filter(e =>
+            e.type === 'milk' && new Date(e.timestamp) >= oneDayAgo
+        );
+
+        const count = recentFeeds.length;
+        const totalMl = recentFeeds.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+        if (count < minCount) {
+            return {
+                type: 'low_feedings',
+                severity: count < minCount - 2 ? 'high' : 'medium',
+                title: 'Few feedings today',
+                message: `Only ${count} feeds in last 24 hours (minimum: ${minCount})`,
+                count: count,
+                totalMl: totalMl,
+                priority: 2,
+                actionable: true
+            };
+        }
+
+        return null;
+    }
+
+    // Detect overly long wake windows
+    detectLongWakeWindow() {
+        // Max wake window by age
+        const maxWakeHours = this.ageWeeks <= 4 ? 1.25 :
+                            this.ageWeeks <= 8 ? 1.75 :
+                            this.ageWeeks <= 12 ? 2.5 :
+                            this.ageWeeks <= 16 ? 3 : 4;
+
+        const sleepEvents = this.events
+            .filter(e => e.type === 'sleep' && e.sleep_end_time)
+            .sort((a, b) => new Date(a.sleep_end_time) - new Date(b.sleep_end_time));
+
+        if (sleepEvents.length === 0) return null;
+
+        // Check time since last wake
+        const lastSleep = sleepEvents[sleepEvents.length - 1];
+        const lastWakeTime = new Date(lastSleep.sleep_end_time);
+        const now = new Date();
+        const hoursSinceWake = (now - lastWakeTime) / (1000 * 60 * 60);
+
+        if (hoursSinceWake > maxWakeHours) {
+            return {
+                type: 'long_wake_window',
+                severity: hoursSinceWake > maxWakeHours + 1 ? 'medium' : 'low',
+                title: 'Long wake window',
+                message: `Baby has been awake ${hoursSinceWake.toFixed(1)} hours (max recommended: ${maxWakeHours}h)`,
+                hoursSinceWake: Math.round(hoursSinceWake * 10) / 10,
+                maxRecommended: maxWakeHours,
+                priority: 2,
+                actionable: true
+            };
+        }
+
+        return null;
+    }
+}
+
+module.exports = { DeepSeekEnhancedAnalyzer, PatternDetector };

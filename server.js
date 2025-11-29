@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { initializeDatabase, Event, BabyProfile, withTransaction } = require('./database');
-const DeepSeekEnhancedAnalyzer = require('./deepseek_analyzer');
+const { DeepSeekEnhancedAnalyzer, PatternDetector } = require('./deepseek_analyzer');
 const axios = require('axios');
 
 // Input validation constants
@@ -338,9 +338,16 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
       goal: options.goal,
       concerns: options.concerns
     });
+
+    // Run real-time pattern detection (no AI, immediate safety alerts)
+    const patternDetector = new PatternDetector(events, HOME_TIMEZONE, ageWeeks);
+    const realtimeAlerts = patternDetector.detectAnomalies();
+    console.log(`[AI Insights] Real-time alerts detected: ${realtimeAlerts.length}`);
+
     const payload = {
       success: true,
       ...insights,
+      realtimeAlerts, // Immediate safety alerts (no AI)
       generatedAt: new Date().toISOString(),
       ageUsed: ageWeeks,
       reason
