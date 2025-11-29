@@ -2,12 +2,15 @@
 const axios = require('axios');
 
 class DeepSeekEnhancedAnalyzer {
-    constructor(events, timezone, apiKey) {
+    constructor(events, timezone, apiKey, options = {}) {
         this.events = events;
         this.timezone = timezone;
         this.apiKey = apiKey;
         this.apiBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
         this.minDataDays = 14;
+        this.model = options.model || 'deepseek-chat';
+        this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
+        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
     }
 
     hasSufficientData() {
@@ -187,18 +190,30 @@ class DeepSeekEnhancedAnalyzer {
 
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
+        const dataDays = this.getDaysOfData();
+        console.log(`[DeepSeek] Starting analysis: ${dataDays} days of data, API key: ${this.apiKey ? 'present' : 'MISSING'}, min required: ${this.minDataDays}`);
+
         if (!this.hasSufficientData()) {
+            console.log(`[DeepSeek] Insufficient data: ${dataDays} < ${this.minDataDays} days`);
             return {
-                insights: [],
-                error: 'Insufficient data for AI analysis',
-                dataDays: this.getDaysOfData()
+                insights: [{
+                    title: 'Need more data',
+                    description: `AI insights unlock after ${this.minDataDays} days of tracking. You currently have ${dataDays} day(s). Keep logging feeds, sleep, and diapers to enable personalized guidance.`,
+                    type: 'general',
+                    confidence: 0.0,
+                    recommendation: 'Continue tracking daily for at least two weeks.'
+                }],
+                error: null,
+                dataDays: dataDays,
+                insufficientData: true
             };
         }
 
         if (!this.apiKey) {
+            console.log('[DeepSeek] No API key configured');
             return {
                 insights: [],
-                error: 'DeepSeek API key not configured',
+                error: 'DeepSeek API key not configured. Add DEEPSEEK_API_KEY to environment variables.',
                 fallback: true,
                 missingApiKey: true
             };
@@ -208,15 +223,22 @@ class DeepSeekEnhancedAnalyzer {
             const patterns = this.extractStatisticalPatterns();
             const prompt = this.buildDeepSeekPrompt(patterns, context);
 
+            console.log('[DeepSeek] Calling API...');
             const response = await this.callDeepSeekAPI(prompt);
+            console.log('[DeepSeek] API response received, length:', response?.length || 0);
             return this.parseDeepSeekResponse(response, patterns);
 
         } catch (error) {
-            console.error('DeepSeek API error:', error);
+            console.error('[DeepSeek] API error:', error.message);
+            if (error.response) {
+                console.error('[DeepSeek] Response status:', error.response.status);
+                console.error('[DeepSeek] Response data:', JSON.stringify(error.response.data).substring(0, 500));
+            }
             return {
                 insights: [],
-                error: 'AI analysis temporarily unavailable',
-                fallback: true
+                error: `AI analysis failed: ${error.message}`,
+                fallback: true,
+                apiError: true
             };
         }
     }
@@ -278,7 +300,7 @@ Please be concise and focus on actionable advice. Format your response as JSON w
 
     async callDeepSeekAPI(prompt) {
         const response = await axios.post(this.apiBaseUrl, {
-            model: 'deepseek-chat',
+            model: this.model,
             messages: [
                 {
                     role: 'system',
@@ -289,8 +311,8 @@ Please be concise and focus on actionable advice. Format your response as JSON w
                     content: prompt
                 }
             ],
-            temperature: 0.3,
-            max_tokens: 2000
+            temperature: this.temperature,
+            max_tokens: this.maxTokens
         }, {
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,

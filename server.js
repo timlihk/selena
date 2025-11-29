@@ -168,6 +168,8 @@ let insightsCache = {
   generatedAt: null,
   refreshing: false
 };
+const MANUAL_REFRESH_COOLDOWN_MS = parseInt(process.env.DEEPSEEK_REFRESH_COOLDOWN_MS || `${5 * 60 * 1000}`, 10);
+let lastManualRefreshAt = 0;
 
 // Trust proxy for Railway deployment (required for rate limiting)
 app.set('trust proxy', 1);
@@ -232,13 +234,22 @@ async function generateAndCacheInsights(reason = 'on-demand') {
   }
 
   insightsCache.refreshing = true;
+  const apiKey = process.env.DEEPSEEK_API_KEY || null;
+  console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? apiKey.substring(0, 8) + '...' : 'none'}`);
+
   try {
     const events = await Event.getAll();
     const ageWeeks = await getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10));
+    console.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
     const analyzer = new DeepSeekEnhancedAnalyzer(
       events,
       HOME_TIMEZONE,
-      process.env.DEEPSEEK_API_KEY || null
+      apiKey,
+      {
+        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+        temperature: process.env.DEEPSEEK_TEMPERATURE,
+        maxTokens: process.env.DEEPSEEK_MAX_TOKENS
+      }
     );
 
     const insights = await analyzer.generateEnhancedInsights({ ageWeeks });
@@ -257,8 +268,8 @@ async function generateAndCacheInsights(reason = 'on-demand') {
     console.error('AI insights generation failed:', error);
     const payload = {
       success: false,
-      error: 'Failed to generate AI insights',
-      message: error.message,
+      error: 'AI insights temporarily unavailable',
+      message: 'Please try again later',
       generatedAt: new Date().toISOString()
     };
     insightsCache.payload = payload;
@@ -347,18 +358,59 @@ app.get('/api/events', getEventsHandler);
 // Get AI-enhanced insights
 app.get('/api/ai-insights', async (req, res) => {
   try {
-    const shouldRegenerate = !insightsCache.payload || isInsightsCacheStale() || (insightsCache.payload && insightsCache.payload.success === false);
+    const forceRefresh = req.query.force === '1' || req.query.force === 'true';
+    const hasMissingKeyError = insightsCache.payload?.aiEnhanced?.missingApiKey === true;
+    const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
+      (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError;
+
+    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, missingKeyError=${hasMissingKeyError}, shouldRegenerate=${shouldRegenerate}`);
+
     const payload = shouldRegenerate
       ? await generateAndCacheInsights('api')
       : insightsCache.payload;
 
-    res.status(payload && payload.success ? 200 : 500).json(payload);
+    res.status(payload && payload.success ? 200 : 503).json(payload);
   } catch (error) {
     console.error('AI insights error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate AI insights',
-      message: error.message
+      error: 'AI insights temporarily unavailable',
+      message: 'Please try again later'
+    });
+  }
+});
+
+// Manual refresh endpoint with token + cooldown
+app.post('/api/ai-insights/refresh', async (req, res) => {
+  try {
+    const refreshToken = process.env.DEEPSEEK_REFRESH_TOKEN || null;
+    if (!refreshToken) {
+      return res.status(404).json({ success: false, error: 'Manual refresh not enabled' });
+    }
+
+    const tokenFromRequest = req.headers['x-refresh-token'] || req.query.token;
+    if (tokenFromRequest !== refreshToken) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const now = Date.now();
+    if (lastManualRefreshAt && (now - lastManualRefreshAt) < MANUAL_REFRESH_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((MANUAL_REFRESH_COOLDOWN_MS - (now - lastManualRefreshAt)) / 1000);
+      return res.status(429).json({
+        success: false,
+        error: `Please wait ${waitSeconds}s before triggering another refresh`
+      });
+    }
+
+    lastManualRefreshAt = now;
+    const payload = await generateAndCacheInsights('manual');
+    res.status(payload && payload.success ? 200 : 503).json(payload);
+  } catch (error) {
+    console.error('Manual AI refresh error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'AI insights refresh failed',
+      message: 'Please try again later'
     });
   }
 });
