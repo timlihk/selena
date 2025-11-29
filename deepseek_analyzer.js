@@ -350,6 +350,80 @@ class DeepSeekEnhancedAnalyzer {
         };
     }
 
+    medianTimestampForType(field) {
+        const values = this.events
+            .map(e => e[field])
+            .filter(Boolean)
+            .map(v => new Date(v).getTime())
+            .filter(t => !Number.isNaN(t))
+            .sort((a, b) => a - b);
+        if (!values.length) return null;
+        const mid = Math.floor(values.length / 2);
+        const ts = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+        return new Date(ts).toISOString();
+    }
+
+    medianFirstEventTime(type) {
+        const firstPerDay = {};
+        this.events
+            .filter(e => e.type === type)
+            .forEach(e => {
+                const ts = new Date(e.timestamp);
+                if (Number.isNaN(ts.getTime())) return;
+                const day = ts.toISOString().split('T')[0];
+                if (!firstPerDay[day] || ts < firstPerDay[day]) {
+                    firstPerDay[day] = ts;
+                }
+            });
+        const times = Object.values(firstPerDay).map(d => d.getTime()).sort((a, b) => a - b);
+        if (!times.length) return null;
+        const mid = Math.floor(times.length / 2);
+        const ts = times.length % 2 === 0 ? (times[mid - 1] + times[mid]) / 2 : times[mid];
+        return new Date(ts).toISOString();
+    }
+
+    medianIntervalMinutes(type) {
+        const sorted = this.events
+            .filter(e => e.type === type)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        if (sorted.length < 2) return null;
+        const intervals = [];
+        for (let i = 1; i < sorted.length; i++) {
+            const prev = new Date(sorted[i - 1].timestamp);
+            const curr = new Date(sorted[i].timestamp);
+            if (Number.isNaN(prev.getTime()) || Number.isNaN(curr.getTime())) continue;
+            intervals.push((curr - prev) / (1000 * 60));
+        }
+        intervals.sort((a, b) => a - b);
+        if (!intervals.length) return null;
+        const mid = Math.floor(intervals.length / 2);
+        return intervals.length % 2 === 0 ? (intervals[mid - 1] + intervals[mid]) / 2 : intervals[mid];
+    }
+
+    extremeAmount(type, mode = 'max') {
+        const amounts = this.events
+            .filter(e => e.type === type && Number.isFinite(e.amount))
+            .map(e => e.amount);
+        if (!amounts.length) return null;
+        return mode === 'min' ? Math.min(...amounts) : Math.max(...amounts);
+    }
+
+    longestWakeWindowMinutes() {
+        const sleeps = this.events
+            .filter(e => e.type === 'sleep' && e.sleep_start_time && e.sleep_end_time)
+            .sort((a, b) => new Date(a.sleep_start_time) - new Date(b.sleep_start_time));
+        if (sleeps.length < 2) return null;
+        let longest = 0;
+        for (let i = 1; i < sleeps.length; i++) {
+            const prevEnd = new Date(sleeps[i - 1].sleep_end_time);
+            const currStart = new Date(sleeps[i].sleep_start_time);
+            if (Number.isNaN(prevEnd.getTime()) || Number.isNaN(currStart.getTime())) continue;
+            const gap = (currStart - prevEnd) / (1000 * 60);
+            if (gap > longest) longest = gap;
+        }
+        return Math.round(longest);
+    }
+
     // Core DeepSeek API integration
     async analyzeWithDeepSeek(context = {}) {
         const dataDays = context.fullDataDays || this.getDaysOfData();
@@ -384,12 +458,13 @@ class DeepSeekEnhancedAnalyzer {
         try {
             // Use precomputed patterns if provided, otherwise compute them
             const patterns = context.precomputedPatterns || this.extractStatisticalPatterns();
-            const prompt = this.buildDeepSeekPrompt(patterns, context);
+            const { systemPrompt, userContent } = this.buildDeepSeekPrompt(patterns, context);
 
             console.log('[DeepSeek] Calling API...');
-            const response = await this.callDeepSeekAPI(prompt);
+            const response = await this.callDeepSeekAPI(systemPrompt, userContent);
             console.log('[DeepSeek] API response received, length:', response?.length || 0);
-            return this.parseDeepSeekResponse(response, patterns);
+            const parsed = this.parseDeepSeekResponse(response, patterns);
+            return this.sanitizeAIResponse(parsed);
 
         } catch (error) {
             if (error && (error.code === 'DEEPSEEK_AUTH' || error.message === 'DEEPSEEK_AUTH')) {
@@ -432,15 +507,15 @@ class DeepSeekEnhancedAnalyzer {
         const diapersPerDay = days > 0 ? (patterns.diaperPatterns.totalDiapers / days).toFixed(1) : '0';
 
         const anchors = {
-            medianBedtime: this.medianTimestampForType('sleep_start_time'),
-            medianFirstNapStart: this.medianFirstEventTime('sleep'),
-            medianFeedIntervalMinutes: this.medianIntervalMinutes('milk')
+            medianBedtime: this.medianTimestampForType?.('sleep_start_time') || null,
+            medianFirstNapStart: this.medianFirstEventTime?.('sleep') || null,
+            medianFeedIntervalMinutes: this.medianIntervalMinutes?.('milk') || null
         };
 
         const extremes = {
-            shortestNapMin: this.extremeAmount('sleep', 'min'),
-            longestNapMin: this.extremeAmount('sleep', 'max'),
-            longestWakeMinutes: this.longestWakeWindowMinutes()
+            shortestNapMin: this.extremeAmount?.('sleep', 'min') || null,
+            longestNapMin: this.extremeAmount?.('sleep', 'max') || null,
+            longestWakeMinutes: this.longestWakeWindowMinutes?.() || null
         };
 
         const contextPayload = {
@@ -475,39 +550,19 @@ class DeepSeekEnhancedAnalyzer {
             recentEvents: (context.recentEvents || []).slice(-this.rawEventLimit)
         };
 
-        return `You are a pediatric sleep/feeding coach. Read the JSON context and return ONLY JSON (no markdown).
-Context:
-${JSON.stringify(contextPayload)}
-
-Respond with:
+        const systemPrompt = `You are a pediatric sleep/feeding coach. Follow this strict JSON schema. No markdown, no prose outside JSON. Avoid medical diagnosis; if red flags, advise contacting a pediatrician.
+Schema:
 {
-  "insights": [
-    {
-      "title": "...",
-      "description": "...",
-      "type": "developmental|sleep|feeding|health|general",
-      "confidence": 0.0-1.0,
-      "recommendation": "...",
-      "whyItMatters": "...",
-      "priority": 1-5
-    }
-  ],
-  "alerts": [
-    {
-      "title": "...",
-      "severity": "low|medium|high",
-      "note": "...",
-      "priority": 1-5
-    }
-  ],
-  "miniPlan": {
-    "tonightBedtimeTarget": "HH:MM local",
-    "nextWakeWindows": ["XhYm", "XhYm"],
-    "feedingNote": "..."
-  },
-  "measureOfSuccess": "what to check tomorrow"
+  "insights": [{"title":"","description":"","type":"developmental|sleep|feeding|health|general","confidence":0.0-1.0,"recommendation":"","whyItMatters":"","priority":1-5}],
+  "alerts": [{"title":"","severity":"low|medium|high","note":"","priority":1-5}],
+  "miniPlan": {"tonightBedtimeTarget":"HH:MM","nextWakeWindows":["XhYm","XhYm"],"feedingNote":""},
+  "measureOfSuccess": ""
 }
-Limit insights to 3 and alerts to 2. Avoid medical diagnosis; suggest contacting a pediatrician if red flags appear.`;
+Limit: max 3 insights, max 2 alerts.`;
+
+        const userContent = JSON.stringify(contextPayload);
+
+        return { systemPrompt, userContent };
     }
 
     formatMeasurementCompact(m) {
@@ -518,7 +573,7 @@ Limit insights to 3 and alerts to 2. Avoid medical diagnosis; suggest contacting
         return parts.join('/') || 'no measurements';
     }
 
-    async callDeepSeekAPI(prompt) {
+    async callDeepSeekAPI(systemPrompt, userContent) {
         const attempts = Math.max(1, this.retries + 1);
         let lastError = null;
 
@@ -529,11 +584,11 @@ Limit insights to 3 and alerts to 2. Avoid medical diagnosis; suggest contacting
                     messages: [
                         {
                             role: 'system',
-                            content: `Pediatric sleep consultant. Return JSON: {"insights":[{"title":"","description":"","type":"safety|sleep|feeding|health","priority":1-5,"recommendation":""}],"summary":"","alerts":[{"title":"","severity":"low|medium|high"}],"miniPlan":{"bedtime":"HH:MM","wakeWindows":[],"feedingNote":""}}`
+                            content: systemPrompt
                         },
                         {
                             role: 'user',
-                            content: prompt
+                            content: userContent
                         }
                     ],
                     temperature: this.temperature,
@@ -653,6 +708,51 @@ Limit insights to 3 and alerts to 2. Avoid medical diagnosis; suggest contacting
                 source: 'deepseek_ai'
             };
         }
+    }
+
+    sanitizeAIResponse(aiResponse) {
+        if (!aiResponse || typeof aiResponse !== 'object') {
+            return aiResponse;
+        }
+
+        const sanitized = { ...aiResponse };
+
+        if (Array.isArray(sanitized.insights)) {
+            sanitized.insights = sanitized.insights.slice(0, 3).map(insight => ({
+                title: this.escapeText(insight.title),
+                description: this.escapeText(insight.description),
+                type: this.escapeText(insight.type),
+                confidence: Number(insight.confidence) || 0,
+                recommendation: this.escapeText(insight.recommendation),
+                whyItMatters: this.escapeText(insight.whyItMatters),
+                priority: Number(insight.priority) || 3
+            }));
+        }
+
+        if (Array.isArray(sanitized.alerts)) {
+            sanitized.alerts = sanitized.alerts.slice(0, 2).map(alert => ({
+                title: this.escapeText(alert.title),
+                severity: this.escapeText(alert.severity),
+                note: this.escapeText(alert.note),
+                priority: Number(alert.priority) || 3
+            }));
+        }
+
+        if (sanitized.miniPlan) {
+            sanitized.miniPlan = {
+                tonightBedtimeTarget: this.escapeText(sanitized.miniPlan.tonightBedtimeTarget),
+                nextWakeWindows: Array.isArray(sanitized.miniPlan.nextWakeWindows) ? sanitized.miniPlan.nextWakeWindows.map(w => this.escapeText(w)) : [],
+                feedingNote: this.escapeText(sanitized.miniPlan.feedingNote)
+            };
+        }
+
+        sanitized.measureOfSuccess = this.escapeText(sanitized.measureOfSuccess);
+        return sanitized;
+    }
+
+    escapeText(text) {
+        if (text === null || text === undefined) return '';
+        return String(text).replace(/[<>]/g, '').trim();
     }
 
     // Generate combined insights (statistical + AI)

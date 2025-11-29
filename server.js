@@ -164,7 +164,8 @@ const PORT = process.env.PORT || 3000;
 // AI insights scheduling and caching
 const INSIGHTS_CACHE_TTL_MS = 23 * 60 * 60 * 1000; // refresh roughly once a day
 const INSIGHTS_REFRESH_HOUR = 3; // 03:00 server local time
-const INSIGHTS_INVALIDATION_THRESHOLD = 10; // Invalidate cache after N new events
+const INSIGHTS_INVALIDATION_THRESHOLD = 5; // Invalidate cache after N new events
+const INSIGHTS_FAILURE_TTL_MS = 10 * 60 * 1000; // retry failures sooner (10 minutes)
 let insightsCache = {
   payload: null,
   generatedAt: null,
@@ -232,7 +233,8 @@ function isInsightsCacheStale() {
     return true;
   }
   const cacheAgeMs = Date.now() - new Date(insightsCache.generatedAt).getTime();
-  return cacheAgeMs > INSIGHTS_CACHE_TTL_MS;
+  const ttl = insightsCache.payload && insightsCache.payload.success === false ? INSIGHTS_FAILURE_TTL_MS : INSIGHTS_CACHE_TTL_MS;
+  return cacheAgeMs > ttl;
 }
 
 async function checkDeepSeekHealth() {
