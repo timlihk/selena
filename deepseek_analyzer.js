@@ -430,13 +430,10 @@ Norms(${ageLabel}): sleep ${norms.sleepHoursMin}-${norms.sleepHoursMax}h, wake $
 Last ${days}d: feeds ${feedsPerDay}/day @ ${avgFeedMl}ml, sleep avg ${avgSleepMin}min, wake ${avgWakeMin}min, diapers ${diapersPerDay}/day
 ${trends.feeding ? `Trends: feed ${trends.feeding}, sleep ${trends.sleep || 'stable'}, diaper ${trends.diaper || 'stable'}` : ''}`;
 
-        // Optimized prompt - concise system instruction + data
-        return `Pediatric sleep consultant for ${ageLabel} infant. Prioritize: 1)Safety 2)Health 3)Optimization.
-Flag: sleep <10h/>18h, no wet diaper 6h+, feed gap >5h. Be specific, actionable, reassuring. JSON only.
+        // Minimal prompt - no JSON schema (model knows the format from system prompt)
+        return `${data}
 
-${data}
-
-{"insights":[{"title":"","description":"","type":"safety|sleep|feeding|health|general","priority":1-5,"confidence":0-1,"recommendation":"","whyItMatters":""}],"summary":"","alerts":[{"title":"","severity":"low|medium|high","note":""}],"miniPlan":{"bedtime":"HH:MM","wakeWindows":[""],"feedingNote":""}}`;
+Provide: 2-3 insights (priority 1=urgent to 5), any alerts, tonight's plan. JSON only.`;
     }
 
     formatMeasurementCompact(m) {
@@ -458,7 +455,7 @@ ${data}
                     messages: [
                         {
                             role: 'system',
-                            content: 'Pediatric sleep consultant. Give accurate, evidence-based, actionable advice. JSON only.'
+                            content: `Pediatric sleep consultant. Return JSON: {"insights":[{"title":"","description":"","type":"safety|sleep|feeding|health","priority":1-5,"recommendation":""}],"summary":"","alerts":[{"title":"","severity":"low|medium|high"}],"miniPlan":{"bedtime":"HH:MM","wakeWindows":[],"feedingNote":""}}`
                         },
                         {
                             role: 'user',
@@ -487,22 +484,47 @@ ${data}
 
                 return response.data.choices[0].message.content;
             } catch (error) {
-                if (error?.response?.status === 401 || error?.response?.status === 403) {
+                const status = error?.response?.status;
+                const errorData = error?.response?.data;
+                lastError = error;
+
+                // Auth errors - don't retry
+                if (status === 401 || status === 403) {
                     const authError = new Error('DEEPSEEK_AUTH');
                     authError.code = 'DEEPSEEK_AUTH';
                     throw authError;
                 }
 
-                const status = error?.response?.status;
-                const retriable = [408, 425, 429, 500, 502, 503, 504].includes(status);
+                // Rate limit - log and use longer backoff
+                if (status === 429) {
+                    const retryAfter = error?.response?.headers?.['retry-after'] || 60;
+                    console.warn(`[DeepSeek] Rate limited. Retry after ${retryAfter}s`);
+                    if (i < attempts - 1) {
+                        await this.delay(Math.min(retryAfter * 1000, 30000)); // Max 30s wait
+                        continue;
+                    }
+                }
+
+                // Quota exceeded - non-retriable
+                if (status === 402 || errorData?.error?.type === 'insufficient_quota') {
+                    const quotaError = new Error('DEEPSEEK_QUOTA');
+                    quotaError.code = 'DEEPSEEK_QUOTA';
+                    console.error('[DeepSeek] Quota exceeded');
+                    throw quotaError;
+                }
+
+                // Server errors - retriable with backoff
+                const retriable = [408, 425, 500, 502, 503, 504].includes(status);
                 const isLastAttempt = i === attempts - 1;
-                lastError = error;
 
                 if (!retriable || isLastAttempt) {
+                    console.error(`[DeepSeek] API error: status=${status}, message=${error.message}`);
                     throw error;
                 }
 
-                const delayMs = 500 * (i + 1);
+                // Exponential backoff: 1s, 2s, 4s...
+                const delayMs = Math.min(1000 * Math.pow(2, i), 10000);
+                console.log(`[DeepSeek] Retry ${i + 1}/${attempts} after ${delayMs}ms`);
                 await this.delay(delayMs);
             }
         }
