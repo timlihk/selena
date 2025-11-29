@@ -346,7 +346,7 @@ Respond with strict JSON:
                         'Authorization': `Bearer ${this.apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 15000
+                    timeout: 45000
                 });
 
                 return response.data.choices[0].message.content;
