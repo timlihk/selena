@@ -173,37 +173,20 @@ async function testConnection() {
 // Execute callback within a database transaction
 async function withTransaction(callback) {
   if (useMemoryStore) {
-    // Enhanced memory store transaction simulation with actual data mutation
-    // Snapshot memoryStore at BEGIN for rollback support
-    let transactionState = 'idle';
-    let memorySnapshot = null;
-    let memoryIdCounterSnapshot = null;
-
+    // Enhanced memory store transaction simulation
+    let transactionState = 'active';
     const transactionClient = {
       query: async (text, params = []) => {
         const normalizedText = text.trim().toUpperCase();
 
         // Handle transaction control statements
         if (normalizedText === 'BEGIN') {
-          // Take a deep snapshot of current state for potential rollback
-          memorySnapshot = memoryStore.map(event => ({ ...event }));
-          memoryIdCounterSnapshot = memoryIdCounter;
           transactionState = 'active';
           return { rows: [] };
         } else if (normalizedText === 'COMMIT') {
-          // Clear snapshot - changes are permanent
-          memorySnapshot = null;
-          memoryIdCounterSnapshot = null;
           transactionState = 'committed';
           return { rows: [] };
         } else if (normalizedText === 'ROLLBACK') {
-          // Restore snapshot - revert all changes made during transaction
-          if (memorySnapshot !== null) {
-            memoryStore = memorySnapshot;
-            memoryIdCounter = memoryIdCounterSnapshot;
-          }
-          memorySnapshot = null;
-          memoryIdCounterSnapshot = null;
           transactionState = 'rolled_back';
           return { rows: [] };
         }
@@ -213,66 +196,16 @@ async function withTransaction(callback) {
           throw new Error(`Transaction is ${transactionState}, cannot execute query`);
         }
 
-        // Handle UPDATE queries for memory store
-        if (normalizedText.startsWith('UPDATE BABY_EVENTS')) {
-          // Parse UPDATE baby_events SET ... WHERE id = $N RETURNING *
-          // Extract the id from params (last param in WHERE id = $N pattern)
-          const whereIdMatch = text.match(/WHERE\s+id\s*=\s*\$(\d+)/i);
-          if (whereIdMatch) {
-            const idParamIndex = parseInt(whereIdMatch[1], 10) - 1;
-            const eventId = params[idParamIndex];
-            const index = findMemoryEventIndexById(eventId);
-
-            if (index === -1) {
-              return { rows: [], rowCount: 0 };
-            }
-
-            // Parse SET clause to extract field updates
-            const setMatch = text.match(/SET\s+(.+?)\s+WHERE/is);
-            if (setMatch) {
-              const updates = {};
-              const setClause = setMatch[1];
-              // Match patterns like "amount = $1" or "sleep_end_time = $2"
-              const fieldMatches = setClause.matchAll(/(\w+)\s*=\s*\$(\d+)/gi);
-              for (const match of fieldMatches) {
-                const fieldName = match[1].toLowerCase();
-                const paramIndex = parseInt(match[2], 10) - 1;
-                let value = params[paramIndex];
-                // Normalize timestamps
-                if (fieldName.includes('time') && value) {
-                  value = ensureMemoryTimestamp(value);
-                }
-                updates[fieldName] = value;
-              }
-
-              const updatedEvent = updateMemoryEvent(index, updates);
-              return { rows: [updatedEvent], rowCount: 1 };
-            }
-          }
-          return { rows: [], rowCount: 0 };
-        }
-
-        // Handle SELECT queries for memory store
-        if (normalizedText.startsWith('SELECT')) {
-          // Handle simple SELECT 1 style queries for testing
-          if (normalizedText.match(/^SELECT\s+\d+/)) {
-            const numMatch = text.match(/SELECT\s+(\d+)\s+(?:AS\s+(\w+))?/i);
-            if (numMatch) {
-              const value = parseInt(numMatch[1], 10);
-              const alias = numMatch[2] || 'value';
-              return { rows: [{ [alias]: value }] };
-            }
-          }
-          // For FOR UPDATE queries on sleep events, delegate to Event methods
-          if (normalizedText.includes('FOR UPDATE')) {
-            // This is handled by Event.getLastIncompleteSleepForUpdate
-            return { rows: [] };
+        // Execute the actual query using the regular pool or memory store
+        if (pool) {
+          return pool.query(text, params);
+        } else {
+          // For memory store without pool, simulate query execution
+          if (text.trim().toUpperCase().startsWith('SELECT')) {
+            return { rows: [{ test: 1 }] };
           }
           return { rows: [] };
         }
-
-        // Default: return empty for other query types
-        return { rows: [] };
       }
     };
 
@@ -346,30 +279,6 @@ async function initializeDatabase() {
           sleep_start_time TIMESTAMPTZ,
           sleep_end_time TIMESTAMPTZ,
           subtype VARCHAR(20)
-        )
-      `);
-
-      // Create baby profile table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS baby_profile (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          date_of_birth DATE NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Create baby measurements table for tracking weight/height history
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS baby_measurements (
-          id SERIAL PRIMARY KEY,
-          measurement_date DATE NOT NULL,
-          weight_kg DECIMAL(4,2),
-          height_cm DECIMAL(4,1),
-          head_circumference_cm DECIMAL(4,1),
-          notes TEXT,
-          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
       `);
 
@@ -496,29 +405,6 @@ async function normalizeTimestampColumns(client) {
       );
     }
   }
-}
-
-function eventOverlapWithDay(event, dayStart, dayEnd) {
-  if (event.type === 'sleep' && event.sleep_start_time) {
-    const sleepStart = new Date(event.sleep_start_time);
-    if (Number.isNaN(sleepStart.getTime())) {
-      return false;
-    }
-
-    let sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date();
-    if (Number.isNaN(sleepEnd.getTime())) {
-      sleepEnd = new Date();
-    }
-
-    return sleepStart <= dayEnd && sleepEnd >= dayStart;
-  }
-
-  const eventTimestamp = new Date(event.timestamp);
-  if (Number.isNaN(eventTimestamp.getTime())) {
-    return false;
-  }
-
-  return eventTimestamp >= dayStart && eventTimestamp <= dayEnd;
 }
 
 // Event operations
@@ -668,36 +554,14 @@ const Event = {
     }
   },
 
-  // Create a new event within a transaction (accepts client for transaction safety)
-  async createWithClient(client, type, amount = null, userName = 'Unknown', sleepStartTime = null, sleepEndTime = null, subtype = null, timestamp = null) {
-    try {
-      if (useMemoryStore) {
-        return createMemoryEvent(type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp);
-      }
-
-      const result = await client.query(
-        'INSERT INTO baby_events (type, amount, user_name, sleep_start_time, sleep_end_time, subtype, timestamp) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, CURRENT_TIMESTAMP)) RETURNING *',
-        [type, amount, userName, sleepStartTime, sleepEndTime, subtype, timestamp]
-      );
-      return result.rows[0];
-    } catch (error) {
-      console.error('❌ Database error creating event with client:', error);
-      throw error;
-    }
-  },
-
   // Get today's events
   async getTodayStats() {
     try {
-      const now = new Date();
-      const todayStartLocal = new Date(now.toLocaleString('en-US', { timeZone: HOME_TIMEZONE }));
-      todayStartLocal.setHours(0, 0, 0, 0);
-      const todayEndLocal = new Date(todayStartLocal);
-      todayEndLocal.setHours(23, 59, 59, 999);
-
       if (useMemoryStore) {
+        const todayString = formatDateInTimezone(new Date(), HOME_TIMEZONE);
         const statsAccumulator = memoryStore.reduce((acc, event) => {
-          if (!eventOverlapWithDay(event, todayStartLocal, todayEndLocal)) {
+          const eventDateString = formatDateInTimezone(new Date(event.timestamp), HOME_TIMEZONE);
+          if (eventDateString !== todayString) {
             return acc;
           }
 
@@ -736,41 +600,22 @@ const Event = {
       }
 
       ensureDatabaseConnected();
+      // Simplified query: Get all events where the date (in home timezone) matches today
       const result = await pool.query(`
-        WITH bounds AS (
-          SELECT
-            DATE_TRUNC('day', NOW() AT TIME ZONE $1) AS today_start_tz,
-            DATE_TRUNC('day', NOW() AT TIME ZONE $1) + INTERVAL '24 hours' - INTERVAL '1 millisecond' AS today_end_tz
-        )
         SELECT
-          COUNT(CASE WHEN b.type = 'milk' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as milk_count,
-          COUNT(CASE WHEN b.type IN ('poo', 'diaper') AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as diaper_count,
-          COUNT(CASE WHEN b.type = 'bath' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN 1 END) as bath_count,
-          COUNT(CASE WHEN b.type = 'sleep' AND (
-            DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR DATE(b.sleep_start_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR DATE(b.sleep_end_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR (b.sleep_start_time AT TIME ZONE $1 < DATE_TRUNC('day', NOW() AT TIME ZONE $1)
-                AND (b.sleep_end_time IS NULL OR b.sleep_end_time AT TIME ZONE $1 >= DATE_TRUNC('day', NOW() AT TIME ZONE $1)))
-          ) THEN 1 END) as sleep_count,
-          COALESCE(SUM(CASE WHEN b.type = 'milk' AND DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1) THEN b.amount ELSE 0 END), 0) as total_milk,
-          COALESCE(SUM(CASE WHEN b.type = 'sleep' AND (
-            DATE(b.timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR DATE(b.sleep_start_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR DATE(b.sleep_end_time AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
-            OR (b.sleep_start_time AT TIME ZONE $1 < DATE_TRUNC('day', NOW() AT TIME ZONE $1)
-                AND (b.sleep_end_time IS NULL OR b.sleep_end_time AT TIME ZONE $1 >= DATE_TRUNC('day', NOW() AT TIME ZONE $1)))
-          ) THEN b.amount ELSE 0 END), 0) as total_sleep_minutes
-        FROM baby_events b
-        CROSS JOIN bounds
-        WHERE
-          b.timestamp >= bounds.today_start_tz - INTERVAL '1 day'
-          OR (b.sleep_start_time IS NOT NULL AND b.sleep_start_time >= bounds.today_start_tz - INTERVAL '1 day')
-          OR (b.sleep_end_time IS NOT NULL AND b.sleep_end_time >= bounds.today_start_tz - INTERVAL '1 day')
+          COUNT(CASE WHEN type = 'milk' THEN 1 END) as milk_count,
+          COUNT(CASE WHEN type IN ('poo', 'diaper') THEN 1 END) as diaper_count,
+          COUNT(CASE WHEN type = 'bath' THEN 1 END) as bath_count,
+          COUNT(CASE WHEN type = 'sleep' THEN 1 END) as sleep_count,
+          COALESCE(SUM(CASE WHEN type = 'milk' THEN amount ELSE 0 END), 0) as total_milk,
+          COALESCE(SUM(CASE WHEN type = 'sleep' THEN amount ELSE 0 END), 0) as total_sleep_minutes
+        FROM baby_events
+        WHERE DATE(timestamp AT TIME ZONE $1) = DATE(NOW() AT TIME ZONE $1)
       `, [HOME_TIMEZONE]);
 
       const row = result.rows[0] || {};
 
+      // Format the stats
       const stats = {
         milk: parseInt(row.milk_count, 10) || 0,
         poo: parseInt(row.diaper_count, 10) || 0,
@@ -916,156 +761,10 @@ const Event = {
   }
 };
 
-// Baby Profile operations
-const BabyProfile = {
-  // Get baby profile
-  async getProfile() {
-    try {
-      if (useMemoryStore) {
-        // Memory store implementation for baby profile
-        const profile = memoryStore.find(item => item._type === 'baby_profile');
-        return profile ? cloneEvent(profile) : null;
-      }
-
-      ensureDatabaseConnected();
-      const result = await pool.query(
-        'SELECT * FROM baby_profile ORDER BY id DESC LIMIT 1'
-      );
-      return result.rows[0] || null;
-    } catch (error) {
-      console.error('Error getting baby profile:', error);
-      throw error;
-    }
-  },
-
-  // Create or update baby profile
-  async saveProfile(name, dateOfBirth) {
-    try {
-      if (useMemoryStore) {
-        // Remove existing profile if any
-        const existingIndex = memoryStore.findIndex(item => item._type === 'baby_profile');
-        if (existingIndex !== -1) {
-          memoryStore.splice(existingIndex, 1);
-        }
-
-        const profile = {
-          _type: 'baby_profile',
-          id: memoryIdCounter++,
-          name,
-          date_of_birth: dateOfBirth,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        memoryStore.push(profile);
-        return cloneEvent(profile);
-      }
-
-      ensureDatabaseConnected();
-
-      // Check if profile exists
-      const existingProfile = await pool.query(
-        'SELECT id FROM baby_profile ORDER BY id DESC LIMIT 1'
-      );
-
-      if (existingProfile.rows.length > 0) {
-        // Update existing profile
-        const result = await pool.query(
-          'UPDATE baby_profile SET name = $1, date_of_birth = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-          [name, dateOfBirth, existingProfile.rows[0].id]
-        );
-        return result.rows[0];
-      } else {
-        // Create new profile
-        const result = await pool.query(
-          'INSERT INTO baby_profile (name, date_of_birth) VALUES ($1, $2) RETURNING *',
-          [name, dateOfBirth]
-        );
-        return result.rows[0];
-      }
-    } catch (error) {
-      console.error('Error saving baby profile:', error);
-      throw error;
-    }
-  },
-
-  // Add baby measurement
-  async addMeasurement(measurementDate, weightKg, heightCm, headCircumferenceCm, notes) {
-    try {
-      if (useMemoryStore) {
-        const measurement = {
-          _type: 'baby_measurement',
-          id: memoryIdCounter++,
-          measurement_date: measurementDate,
-          weight_kg: weightKg,
-          height_cm: heightCm,
-          head_circumference_cm: headCircumferenceCm,
-          notes,
-          created_at: new Date().toISOString()
-        };
-        memoryStore.push(measurement);
-        return cloneEvent(measurement);
-      }
-
-      ensureDatabaseConnected();
-      const result = await pool.query(
-        'INSERT INTO baby_measurements (measurement_date, weight_kg, height_cm, head_circumference_cm, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [measurementDate, weightKg, heightCm, headCircumferenceCm, notes]
-      );
-      return result.rows[0];
-    } catch (error) {
-      console.error('Error adding baby measurement:', error);
-      throw error;
-    }
-  },
-
-  // Get all baby measurements
-  async getMeasurements() {
-    try {
-      if (useMemoryStore) {
-        return memoryStore
-          .filter(item => item._type === 'baby_measurement')
-          .sort((a, b) => new Date(b.measurement_date) - new Date(a.measurement_date))
-          .map(cloneEvent);
-      }
-
-      ensureDatabaseConnected();
-      const result = await pool.query(
-        'SELECT * FROM baby_measurements ORDER BY measurement_date DESC'
-      );
-      return result.rows;
-    } catch (error) {
-      console.error('Error getting baby measurements:', error);
-      throw error;
-    }
-  },
-
-  // Get latest measurement
-  async getLatestMeasurement() {
-    try {
-      if (useMemoryStore) {
-        const measurements = memoryStore
-          .filter(item => item._type === 'baby_measurement')
-          .sort((a, b) => new Date(b.measurement_date) - new Date(a.measurement_date));
-        return measurements.length > 0 ? cloneEvent(measurements[0]) : null;
-      }
-
-      ensureDatabaseConnected();
-      const result = await pool.query(
-        'SELECT * FROM baby_measurements ORDER BY measurement_date DESC LIMIT 1'
-      );
-      return result.rows[0] || null;
-    } catch (error) {
-      console.error('Error getting latest measurement:', error);
-      throw error;
-    }
-  }
-};
-
 module.exports = {
   pool,
   initializeDatabase,
   Event,
-  BabyProfile,
   testConnection,
   resetMemoryStore,
   withTransaction

@@ -3,8 +3,7 @@ const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { initializeDatabase, Event, BabyProfile, withTransaction } = require('./database');
-const DeepSeekEnhancedAnalyzer = require('./deepseek_analyzer');
+const { initializeDatabase, Event, withTransaction } = require('./database');
 
 // Input validation constants
 // Enhanced validation functions
@@ -49,9 +48,6 @@ function validateTimestamp(timestamp) {
   maxPastDate.setDate(maxPastDate.getDate() - TIMESTAMP_MAX_PAST_DAYS);
 
   const eventDate = new Date(timestamp);
-  if (Number.isNaN(eventDate.getTime())) {
-    throw new Error('Invalid timestamp format');
-  }
   if (eventDate > new Date()) {
     throw new Error('Event timestamp cannot be in the future');
   }
@@ -160,15 +156,6 @@ const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// AI insights scheduling and caching
-const INSIGHTS_CACHE_TTL_MS = 23 * 60 * 60 * 1000; // refresh roughly once a day
-const INSIGHTS_REFRESH_HOUR = 3; // 03:00 server local time
-let insightsCache = {
-  payload: null,
-  generatedAt: null,
-  refreshing: false
-};
-
 // Trust proxy for Railway deployment (required for rate limiting)
 app.set('trust proxy', 1);
 
@@ -198,98 +185,6 @@ app.use(express.json({ limit: '10kb' })); // Body parser with size limit
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(limiter); // Rate limiting
 app.use(express.static(PUBLIC_DIR));
-
-function isInsightsCacheStale() {
-  if (!insightsCache.generatedAt) {
-    return true;
-  }
-  const cacheAgeMs = Date.now() - new Date(insightsCache.generatedAt).getTime();
-  return cacheAgeMs > INSIGHTS_CACHE_TTL_MS;
-}
-
-async function getBabyAgeWeeks(defaultWeeks = 8) {
-  let ageWeeks = defaultWeeks;
-
-  try {
-    const profile = await BabyProfile.getProfile();
-    if (profile && profile.date_of_birth) {
-      const birthDate = new Date(profile.date_of_birth);
-      const today = new Date();
-      const diffTime = Math.abs(today - birthDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      ageWeeks = Math.floor(diffDays / 7);
-    }
-  } catch (profileError) {
-    console.log('Could not get baby profile for age calculation, using default:', profileError.message);
-  }
-
-  return ageWeeks;
-}
-
-async function generateAndCacheInsights(reason = 'on-demand') {
-  if (insightsCache.refreshing) {
-    return insightsCache.payload;
-  }
-
-  insightsCache.refreshing = true;
-  try {
-    const events = await Event.getAll();
-    const ageWeeks = await getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10));
-    const analyzer = new DeepSeekEnhancedAnalyzer(
-      events,
-      HOME_TIMEZONE,
-      process.env.DEEPSEEK_API_KEY || null
-    );
-
-    const insights = await analyzer.generateEnhancedInsights({ ageWeeks });
-    const payload = {
-      success: true,
-      ...insights,
-      generatedAt: new Date().toISOString(),
-      ageUsed: ageWeeks,
-      reason
-    };
-
-    insightsCache.payload = payload;
-    insightsCache.generatedAt = payload.generatedAt;
-    return payload;
-  } catch (error) {
-    console.error('AI insights generation failed:', error);
-    const payload = {
-      success: false,
-      error: 'Failed to generate AI insights',
-      message: error.message,
-      generatedAt: new Date().toISOString()
-    };
-    insightsCache.payload = payload;
-    insightsCache.generatedAt = payload.generatedAt;
-    return payload;
-  } finally {
-    insightsCache.refreshing = false;
-  }
-}
-
-function getNextInsightsRefreshDelay() {
-  const now = new Date();
-  const nextRun = new Date(now);
-  nextRun.setHours(INSIGHTS_REFRESH_HOUR, 0, 0, 0);
-  if (nextRun <= now) {
-    nextRun.setDate(nextRun.getDate() + 1);
-  }
-  return nextRun.getTime() - now.getTime();
-}
-
-function scheduleDailyAIInsights() {
-  const scheduleNext = () => {
-    const delay = getNextInsightsRefreshDelay();
-    setTimeout(async () => {
-      await generateAndCacheInsights('scheduled');
-      scheduleNext();
-    }, delay);
-  };
-
-  scheduleNext();
-}
 
 async function getEventsHandler(req, res) {
   try {
@@ -343,24 +238,6 @@ async function getEventsHandler(req, res) {
 
 // Get all events
 app.get('/api/events', getEventsHandler);
-
-// Get AI-enhanced insights
-app.get('/api/ai-insights', async (req, res) => {
-  try {
-    const payload = (!insightsCache.payload || isInsightsCacheStale())
-      ? await generateAndCacheInsights('api')
-      : insightsCache.payload;
-
-    res.status(payload && payload.success ? 200 : 500).json(payload);
-  } catch (error) {
-    console.error('AI insights error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to generate AI insights',
-      message: error.message
-    });
-  }
-});
 
 // Create a new event
 app.post('/api/events', async (req, res) => {
@@ -426,46 +303,14 @@ app.post('/api/events', async (req, res) => {
 
     if (type === 'sleep') {
       if (sleepSubType === 'fall_asleep') {
-        // Create fall_asleep within a transaction to prevent race conditions
+        // Validate that user doesn't already have an incomplete sleep session
         try {
-          const result = await withTransaction(async (client) => {
-            // Check for existing incomplete sleep with FOR UPDATE lock
-            const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(userName, client);
-
-            if (incompleteSleep) {
-              return {
-                success: false,
-                error: `Cannot start new sleep session. User ${userName} already has an incomplete sleep session (started at ${incompleteSleep.sleep_start_time})`
-              };
-            }
-
-            sleepStart = eventTimestamp || new Date().toISOString();
-
-            // Create the event within the same transaction
-            const event = await Event.createWithClient(
-              client,
-              type,
-              null, // amount
-              userName,
-              sleepStart,
-              null, // sleepEnd
-              null, // subtype
-              eventTimestamp
-            );
-
-            return { success: true, event };
-          });
-
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-
-          // Return the created event
-          return res.status(201).json(result.event);
-        } catch (error) {
-          console.error('Failed to create fall_asleep event:', error);
-          return res.status(500).json({ error: 'Failed to create sleep session' });
+          await canStartNewSleep(userName);
+        } catch (validationError) {
+          return res.status(400).json({ error: validationError.message });
         }
+
+        sleepStart = eventTimestamp || new Date().toISOString();
       } else if (sleepSubType === 'wake_up') {
         sleepEnd = eventTimestamp || new Date().toISOString();
 
@@ -842,155 +687,6 @@ async function updateEventHandler(req, res) {
 
 app.put('/api/events/:id', updateEventHandler);
 
-// Baby Profile API endpoints
-
-// Get baby profile
-app.get('/api/baby-profile', async (req, res) => {
-  try {
-    const profile = await BabyProfile.getProfile();
-    const latestMeasurement = await BabyProfile.getLatestMeasurement();
-
-    // Calculate age from DOB
-    let ageWeeks = null;
-    let ageDays = null;
-    if (profile && profile.date_of_birth) {
-      const birthDate = new Date(profile.date_of_birth);
-      const today = new Date();
-      const diffTime = Math.abs(today - birthDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      ageWeeks = Math.floor(diffDays / 7);
-      ageDays = diffDays % 7;
-    }
-
-    res.json({
-      success: true,
-      profile: profile || null,
-      latestMeasurement: latestMeasurement || null,
-      age: profile ? {
-        weeks: ageWeeks,
-        days: ageDays,
-        totalDays: ageWeeks * 7 + ageDays
-      } : null
-    });
-  } catch (error) {
-    console.error('Error getting baby profile:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get baby profile'
-    });
-  }
-});
-
-// Save baby profile
-app.post('/api/baby-profile', async (req, res) => {
-  try {
-    const { name, dateOfBirth } = req.body;
-
-    if (!name || !dateOfBirth) {
-      return res.status(400).json({
-        success: false,
-        error: 'Name and date of birth are required'
-      });
-    }
-
-    // Validate date of birth
-    const dob = new Date(dateOfBirth);
-    if (isNaN(dob.getTime())) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid date of birth format'
-      });
-    }
-
-    // Check if date is in the future
-    if (dob > new Date()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Date of birth cannot be in the future'
-      });
-    }
-
-    const profile = await BabyProfile.saveProfile(name, dateOfBirth);
-    res.json({
-      success: true,
-      profile
-    });
-  } catch (error) {
-    console.error('Error saving baby profile:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to save baby profile'
-    });
-  }
-});
-
-// Add baby measurement
-app.post('/api/baby-measurements', async (req, res) => {
-  try {
-    const { measurementDate, weightKg, heightCm, headCircumferenceCm, notes } = req.body;
-
-    if (!measurementDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Measurement date is required'
-      });
-    }
-
-    // Validate measurement date
-    const measureDate = new Date(measurementDate);
-    if (isNaN(measureDate.getTime())) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid measurement date format'
-      });
-    }
-
-    // Check if date is in the future
-    if (measureDate > new Date()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Measurement date cannot be in the future'
-      });
-    }
-
-    const measurement = await BabyProfile.addMeasurement(
-      measurementDate,
-      weightKg || null,
-      heightCm || null,
-      headCircumferenceCm || null,
-      notes || null
-    );
-
-    res.json({
-      success: true,
-      measurement
-    });
-  } catch (error) {
-    console.error('Error adding baby measurement:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to add baby measurement'
-    });
-  }
-});
-
-// Get baby measurements
-app.get('/api/baby-measurements', async (req, res) => {
-  try {
-    const measurements = await BabyProfile.getMeasurements();
-    res.json({
-      success: true,
-      measurements
-    });
-  } catch (error) {
-    console.error('Error getting baby measurements:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get baby measurements'
-    });
-  }
-});
-
 // Configuration endpoint
 app.get('/api/config', (req, res) => {
   res.json({
@@ -1048,19 +744,13 @@ async function startServer() {
 
     // Start server immediately (don't wait for DB init to complete)
     // This prevents Railway timeout during startup
-    server = app.listen(PORT, () => {
+    app.listen(PORT, () => {
       console.log(`🚀 Baby Tracker server running on port ${PORT}`);
       console.log(`📱 Open http://localhost:${PORT} to view the app`);
       if (!process.env.DATABASE_URL) {
         console.log(`⚠️  Server started but DATABASE is NOT connected`);
       }
     });
-
-    // Warm AI insights cache and schedule daily refresh
-    generateAndCacheInsights('startup').catch((error) => {
-      console.error('AI insights warm-up failed:', error);
-    });
-    scheduleDailyAIInsights();
 
     // Initialize database in background
     setTimeout(async () => {
@@ -1110,43 +800,14 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
     let sleepEnd = null;
 
     if (sleepSubType === 'fall_asleep') {
-      // Create fall_asleep within a transaction to prevent race conditions
+      // Validate that user doesn't already have an incomplete sleep session
       try {
-        const result = await withTransaction(async (client) => {
-          const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(userName, client);
-
-          if (incompleteSleep) {
-            return {
-              success: false,
-              error: `Cannot start new sleep session. User ${userName} already has an incomplete sleep session (started at ${incompleteSleep.sleep_start_time})`
-            };
-          }
-
-          sleepStart = timestamp || new Date().toISOString();
-
-          const event = await Event.createWithClient(
-            client,
-            'sleep',
-            null,
-            userName,
-            sleepStart,
-            null,
-            null,
-            timestamp
-          );
-
-          return { success: true, event };
-        });
-
-        if (!result.success) {
-          return res.status(400).json({ error: result.error });
-        }
-
-        return res.status(201).json(result.event);
-      } catch (error) {
-        console.error('Failed to create confirmed fall_asleep event:', error);
-        return res.status(500).json({ error: 'Failed to create sleep session', details: error.message });
+        await canStartNewSleep(userName);
+      } catch (validationError) {
+        return res.status(400).json({ error: validationError.message });
       }
+
+      sleepStart = timestamp || new Date().toISOString();
     } else if (sleepSubType === 'wake_up') {
       sleepEnd = timestamp || new Date().toISOString();
 
@@ -1225,32 +886,7 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
   }
 });
 
-// Server instance - only used when running as main module
-let server = null;
-
 if (require.main === module) {
-  // Graceful shutdown handling - only register when running as main module
-  // (not when imported by tests or other modules)
-  function gracefulShutdown(signal) {
-    console.log(`\n${signal} received. Shutting down gracefully...`);
-    if (server) {
-      server.close(() => {
-        console.log('Server closed.');
-        process.exit(0);
-      });
-      // Force close after 10 seconds
-      setTimeout(() => {
-        console.log('Forcing shutdown...');
-        process.exit(0);
-      }, 10000);
-    } else {
-      process.exit(0);
-    }
-  }
-
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
   startServer();
 }
 

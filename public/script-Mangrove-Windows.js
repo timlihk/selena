@@ -64,7 +64,6 @@ class BabyTracker {
         this.localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         this.defaultHomeTimezone = 'Asia/Hong_Kong';
         this.homeTimezone = this.defaultHomeTimezone;
-        this.cachedAIInsights = null;
         this.init();
     }
 
@@ -234,413 +233,6 @@ class BabyTracker {
         exportPDF.addEventListener('click', () => {
             this.exportToPDF();
         });
-
-        // Baby Profile Modal
-        const babyProfileBtn = document.getElementById('babyProfileBtn');
-        const babyProfileModal = document.getElementById('babyProfileModal');
-        const closeModal = document.querySelector('.close-modal');
-
-        if (babyProfileBtn && babyProfileModal) {
-            babyProfileBtn.addEventListener('click', () => {
-                this.showBabyProfileModal();
-            });
-
-            closeModal.addEventListener('click', () => {
-                this.hideBabyProfileModal();
-            });
-
-            // Close modal when clicking outside
-            babyProfileModal.addEventListener('click', (e) => {
-                if (e.target === babyProfileModal) {
-                    this.hideBabyProfileModal();
-                }
-            });
-        }
-    }
-
-    // Show baby profile modal
-    async showBabyProfileModal() {
-        const modal = document.getElementById('babyProfileModal');
-        const profileContent = document.getElementById('profileContent');
-
-        if (!modal || !profileContent) return;
-
-        try {
-            // Show loading state
-            profileContent.innerHTML = `
-                <div class="loading-insight">
-                    <p>Loading baby profile...</p>
-                </div>
-            `;
-
-            modal.style.display = 'flex';
-
-            // Load profile data
-            await this.loadBabyProfileData(profileContent);
-        } catch (error) {
-            console.error('Error loading baby profile:', error);
-            profileContent.innerHTML = `
-                <div class="no-data">
-                    <p>Failed to load baby profile</p>
-                    <button class="btn-primary" onclick="babyTracker.showBabyProfileModal()">Try Again</button>
-                </div>
-            `;
-        }
-    }
-
-    // Hide baby profile modal
-    hideBabyProfileModal() {
-        const modal = document.getElementById('babyProfileModal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    }
-
-    // Load baby profile data and render the modal content
-    async loadBabyProfileData(container) {
-        try {
-            const response = await fetch('/api/baby-profile');
-            if (!response.ok) {
-                throw new Error('Failed to load baby profile');
-            }
-
-            const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to load baby profile');
-            }
-
-            this.renderBabyProfile(container, data);
-        } catch (error) {
-            console.error('Error in loadBabyProfileData:', error);
-            throw error;
-        }
-    }
-
-    // Render baby profile content
-    renderBabyProfile(container, data) {
-        const { profile, latestMeasurement, age } = data;
-
-        if (!profile) {
-            // No profile exists - show create form
-            container.innerHTML = this.renderCreateProfileForm();
-            this.attachProfileFormHandlers(container);
-            return;
-        }
-
-        // Profile exists - show profile info and measurements
-        container.innerHTML = `
-            <div class="profile-section">
-                <h3>👶 Basic Information</h3>
-                <div class="profile-info">
-                    <div class="profile-info-item">
-                        <label>Name</label>
-                        <div class="value">${this.escapeHtml(profile.name || 'Not set')}</div>
-                    </div>
-                    <div class="profile-info-item">
-                        <label>Date of Birth</label>
-                        <div class="value">${profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'Not set'}</div>
-                    </div>
-                    <div class="profile-info-item">
-                        <label>Age</label>
-                        <div class="value">${age ? `${age.weeks} weeks ${age.days} days` : 'Not calculated'}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="profile-section">
-                <h3>📊 Latest Measurements</h3>
-                ${latestMeasurement ? this.renderLatestMeasurement(latestMeasurement) : '<p class="no-measurements">No measurements recorded yet</p>'}
-            </div>
-
-            <div class="profile-section">
-                <h3>➕ Add New Measurement</h3>
-                ${this.renderAddMeasurementForm()}
-            </div>
-
-            <div class="profile-section">
-                <h3>📈 Measurement History</h3>
-                ${this.renderMeasurementHistory()}
-            </div>
-
-            <div class="profile-actions">
-                <button class="btn-save" onclick="babyTracker.editProfile()">✏️ Edit Profile</button>
-                <button class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Close</button>
-            </div>
-        `;
-
-        // Wire up form handlers for profile/measurements
-        this.attachProfileFormHandlers(container);
-
-        // Load measurement history
-        this.loadMeasurementHistory();
-    }
-
-    // Render create profile form
-    renderCreateProfileForm() {
-        return `
-            <div class="profile-section">
-                <h3>👶 Create Baby Profile</h3>
-                <form id="createProfileForm" class="profile-form">
-                    <div class="form-group">
-                        <label for="babyName">Baby Name *</label>
-                        <input type="text" id="babyName" name="babyName" required placeholder="Enter baby's name">
-                    </div>
-                    <div class="form-group">
-                        <label for="dateOfBirth">Date of Birth *</label>
-                        <input type="date" id="dateOfBirth" name="dateOfBirth" required max="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                    <div class="profile-actions">
-                        <button type="submit" class="btn-save">💾 Save Profile</button>
-                        <button type="button" class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        `;
-    }
-
-    // Render latest measurement
-    renderLatestMeasurement(measurement) {
-        return `
-            <div class="profile-info">
-                <div class="profile-info-item">
-                    <label>Date</label>
-                    <div class="value">${new Date(measurement.measurement_date).toLocaleDateString()}</div>
-                </div>
-                <div class="profile-info-item">
-                    <label>Weight</label>
-                    <div class="value">${measurement.weight_kg ? `${measurement.weight_kg} kg` : 'Not recorded'}</div>
-                </div>
-                <div class="profile-info-item">
-                    <label>Height</label>
-                    <div class="value">${measurement.height_cm ? `${measurement.height_cm} cm` : 'Not recorded'}</div>
-                </div>
-                <div class="profile-info-item">
-                    <label>Head Circumference</label>
-                    <div class="value">${measurement.head_circumference_cm ? `${measurement.head_circumference_cm} cm` : 'Not recorded'}</div>
-                </div>
-                ${measurement.notes ? `
-                <div class="profile-info-item" style="grid-column: 1 / -1;">
-                    <label>Notes</label>
-                    <div class="value">${this.escapeHtml(measurement.notes)}</div>
-                </div>
-                ` : ''}
-            </div>
-        `;
-    }
-
-    // Render add measurement form
-    renderAddMeasurementForm() {
-        return `
-            <form id="addMeasurementForm" class="profile-form">
-                <div class="form-group">
-                    <label for="measurementDate">Measurement Date *</label>
-                    <input type="date" id="measurementDate" name="measurementDate" required max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}">
-                </div>
-                <div class="form-group">
-                    <label for="weightKg">Weight (kg)</label>
-                    <input type="number" id="weightKg" name="weightKg" step="0.01" min="0" max="20" placeholder="e.g., 4.2">
-                </div>
-                <div class="form-group">
-                    <label for="heightCm">Height (cm)</label>
-                    <input type="number" id="heightCm" name="heightCm" step="0.1" min="0" max="100" placeholder="e.g., 55.5">
-                </div>
-                <div class="form-group">
-                    <label for="headCircumferenceCm">Head Circumference (cm)</label>
-                    <input type="number" id="headCircumferenceCm" name="headCircumferenceCm" step="0.1" min="0" max="60" placeholder="e.g., 38.5">
-                </div>
-                <div class="form-group">
-                    <label for="measurementNotes">Notes</label>
-                    <textarea id="measurementNotes" name="measurementNotes" rows="3" placeholder="Any additional notes about this measurement"></textarea>
-                </div>
-                <div class="profile-actions">
-                    <button type="submit" class="btn-save">➕ Add Measurement</button>
-                </div>
-            </form>
-        `;
-    }
-
-    // Render measurement history placeholder
-    renderMeasurementHistory() {
-        return `
-            <div id="measurementHistory" class="no-measurements">
-                Loading measurement history...
-            </div>
-        `;
-    }
-
-    // Load measurement history
-    async loadMeasurementHistory() {
-        const container = document.getElementById('measurementHistory');
-        if (!container) return;
-
-        try {
-            const response = await fetch('/api/baby-measurements');
-            if (!response.ok) {
-                throw new Error('Failed to load measurements');
-            }
-
-            const data = await response.json();
-
-            if (!data.success || !data.measurements || data.measurements.length === 0) {
-                container.innerHTML = '<p class="no-measurements">No measurements recorded yet</p>';
-                return;
-            }
-
-            container.innerHTML = this.renderMeasurementsTable(data.measurements);
-        } catch (error) {
-            console.error('Error loading measurement history:', error);
-            container.innerHTML = '<p class="no-measurements">Failed to load measurement history</p>';
-        }
-    }
-
-    // Render measurements table
-    renderMeasurementsTable(measurements) {
-        if (!measurements || measurements.length === 0) {
-            return '<p class="no-measurements">No measurements recorded yet</p>';
-        }
-
-        const rows = measurements.map(measurement => `
-            <tr>
-                <td>${new Date(measurement.measurement_date).toLocaleDateString()}</td>
-                <td>${measurement.weight_kg ? `${measurement.weight_kg} kg` : '-'}</td>
-                <td>${measurement.height_cm ? `${measurement.height_cm} cm` : '-'}</td>
-                <td>${measurement.head_circumference_cm ? `${measurement.head_circumference_cm} cm` : '-'}</td>
-                <td>${measurement.notes ? this.escapeHtml(measurement.notes) : '-'}</td>
-            </tr>
-        `).join('');
-
-        return `
-            <table class="measurements-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Weight</th>
-                        <th>Height</th>
-                        <th>Head Circ.</th>
-                        <th>Notes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
-        `;
-    }
-
-    attachProfileFormHandlers(container) {
-        if (!container) return;
-
-        const createForm = container.querySelector('#createProfileForm');
-        if (createForm && !createForm.dataset.bound) {
-            createForm.dataset.bound = 'true';
-            createForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.saveBabyProfile(createForm, container);
-            });
-        }
-
-        const measurementForm = container.querySelector('#addMeasurementForm');
-        if (measurementForm && !measurementForm.dataset.bound) {
-            measurementForm.dataset.bound = 'true';
-            measurementForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.saveBabyMeasurement(measurementForm, container);
-            });
-        }
-    }
-
-    async saveBabyProfile(form, container) {
-        const nameInput = form.querySelector('#babyName');
-        const dobInput = form.querySelector('#dateOfBirth');
-        const saveButton = form.querySelector('button[type="submit"]');
-
-        const name = nameInput ? nameInput.value.trim() : '';
-        const dateOfBirth = dobInput ? dobInput.value : '';
-
-        if (!name || !dateOfBirth) {
-            alert('Please enter the baby name and date of birth');
-            return;
-        }
-
-        this.setButtonLoading(saveButton, true, 'Saving...');
-
-        try {
-            const response = await fetch('/api/baby-profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, dateOfBirth })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Failed to save baby profile');
-            }
-
-            await this.loadBabyProfileData(container);
-        } catch (error) {
-            console.error('Failed to save baby profile:', error);
-            alert(error.message || 'Could not save baby profile');
-        } finally {
-            this.setButtonLoading(saveButton, false);
-        }
-    }
-
-    async saveBabyMeasurement(form, container) {
-        const saveButton = form.querySelector('button[type="submit"]');
-        const measurementDate = form.querySelector('#measurementDate')?.value;
-        const weightVal = form.querySelector('#weightKg')?.value;
-        const heightVal = form.querySelector('#heightCm')?.value;
-        const headVal = form.querySelector('#headCircumferenceCm')?.value;
-        const notesVal = form.querySelector('#measurementNotes')?.value?.trim();
-
-        if (!measurementDate) {
-            alert('Please select a measurement date');
-            return;
-        }
-
-        const payload = {
-            measurementDate,
-            weightKg: weightVal ? parseFloat(weightVal) : null,
-            heightCm: heightVal ? parseFloat(heightVal) : null,
-            headCircumferenceCm: headVal ? parseFloat(headVal) : null,
-            notes: notesVal || null
-        };
-
-        this.setButtonLoading(saveButton, true, 'Saving...');
-
-        try {
-            const response = await fetch('/api/baby-measurements', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Failed to add measurement');
-            }
-
-            await this.loadBabyProfileData(container);
-        } catch (error) {
-            console.error('Failed to save baby measurement:', error);
-            alert(error.message || 'Could not save measurement');
-        } finally {
-            this.setButtonLoading(saveButton, false);
-        }
-    }
-
-    // Edit profile
-    editProfile() {
-        // This would open an edit form - for now, just reload the modal
-        this.showBabyProfileModal();
-    }
-
-    // Helper method to escape HTML
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     async addEvent() {
@@ -791,57 +383,6 @@ class BabyTracker {
                     timestamp: eventTimestamp
                 })
             });
-
-            // Handle 422 with requiresConfirmation - unusual sleep duration
-            if (response.status === 422) {
-                const errorData = await response.json();
-                if (errorData.requiresConfirmation) {
-                    // Ask user to confirm the unusual duration
-                    const confirmed = confirm(
-                        `${errorData.error}\n\nDo you want to record this sleep session anyway?`
-                    );
-
-                    if (confirmed) {
-                        // Retry with confirmed-sleep endpoint
-                        const confirmedResponse = await fetch('/api/events/confirmed-sleep', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                type: 'sleep',
-                                sleepSubType: sleepSubType,
-                                userName: userName,
-                                timestamp: eventTimestamp
-                            })
-                        });
-
-                        if (!confirmedResponse.ok) {
-                            const confirmedError = await confirmedResponse.json();
-                            throw new Error(confirmedError.error || 'Failed to confirm sleep event');
-                        }
-
-                        await this.loadEvents();
-                        await this.updateStats();
-                        this.setCurrentTime();
-
-                        const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
-                        if (button) {
-                            this.setButtonLoading(button, false);
-                            loadingActive = false;
-                            this.showButtonSuccess(button, successMessage);
-                        }
-                        return;
-                    } else {
-                        // User cancelled - just return without error
-                        if (button) {
-                            this.setButtonLoading(button, false);
-                            loadingActive = false;
-                        }
-                        return;
-                    }
-                }
-            }
 
             if (!response.ok) {
                 let errorMessage = 'Failed to add sleep event';
@@ -1225,7 +766,8 @@ class BabyTracker {
             // Get sleep events for this day
             const daySleepEvents = this.allEvents.filter(event => {
                 if (event.type !== 'sleep') return false;
-                return this.eventOverlapsRange(event, dayStart, dayEnd);
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= dayStart && eventDate <= dayEnd;
             });
 
             // Calculate total sleep for this day
@@ -1253,48 +795,8 @@ class BabyTracker {
         return breakdown;
     }
 
-    eventOverlapsRange(event, start, end) {
-        if (!event) {
-            return false;
-        }
-
-        if (event.type === 'sleep') {
-            let sleepStart = event.sleep_start_time ? new Date(event.sleep_start_time) : null;
-            if (!sleepStart || isNaN(sleepStart.getTime())) {
-                sleepStart = event.timestamp ? new Date(event.timestamp) : null;
-            }
-            if (!sleepStart || isNaN(sleepStart.getTime())) {
-                return false;
-            }
-
-            let sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : null;
-            if (!sleepEnd || isNaN(sleepEnd.getTime())) {
-                sleepEnd = event.timestamp ? new Date(event.timestamp) : new Date();
-            }
-            if (!sleepEnd || isNaN(sleepEnd.getTime())) {
-                sleepEnd = new Date();
-            }
-
-            return sleepStart <= end && sleepEnd >= start;
-        }
-
-        const eventDate = event.timestamp ? new Date(event.timestamp) : null;
-        if (!eventDate || isNaN(eventDate.getTime())) {
-            return false;
-        }
-        return eventDate >= start && eventDate <= end;
-    }
-
     // Get today's events in home timezone
     getTodayEvents() {
-        const eventsSource = Array.isArray(this.allEvents) && this.allEvents.length
-            ? this.allEvents
-            : (this.events || []);
-
-        const filterForRange = (events, start, end) => {
-            return events.filter(event => this.eventOverlapsRange(event, start, end));
-        };
-
         try {
             const now = new Date();
 
@@ -1320,7 +822,10 @@ class BabyTracker {
             const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
             const todayEnd = this.parseInTimezone(endStr, this.homeTimezone);
 
-            return filterForRange(eventsSource, todayStart, todayEnd);
+            return this.allEvents.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= todayStart && eventDate <= todayEnd;
+            });
         } catch (error) {
             console.error('Error in getTodayEvents:', error);
             // Fallback to simple date comparison in case of error
@@ -1330,7 +835,10 @@ class BabyTracker {
             const todayEnd = new Date(now);
             todayEnd.setHours(23, 59, 59, 999);
 
-            return filterForRange(eventsSource, todayStart, todayEnd);
+            return this.allEvents.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                return eventDate >= todayStart && eventDate <= todayEnd;
+            });
         }
     }
 
@@ -1500,198 +1008,32 @@ class BabyTracker {
     }
 
     // Update Adaptive Coach insights
-    async updateAdaptiveCoach() {
+    updateAdaptiveCoach() {
         const container = document.getElementById('adaptiveCoach');
         if (!container) return;
 
-        // Show loading state
-        container.innerHTML = `
-            <div class="intelligence-card">
-                <h3>🎯 Adaptive Parenting Coach</h3>
-                <div class="coach-insights">
-                    <div class="loading-insight">
-                        <p>🤖 AI Analysis in Progress...</p>
-                        <p class="loading-text">Analyzing patterns with DeepSeek AI</p>
-                    </div>
-                </div>
-            </div>
-        `;
+        // Create analyzer and generate insights
+        const analyzer = new PatternAnalyzer(this.events || [], this.homeTimezone);
+        const insights = analyzer.generateInsights();
 
-        try {
-            // Get statistical insights first
-            const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
-            const statisticalInsights = analyzer.generateInsights();
-
-            // Fetch AI-enhanced insights
-            const aiInsights = await this.fetchAIInsights();
-
-            // Render combined insights
-            this.renderEnhancedInsights(statisticalInsights, aiInsights, container);
-
-        } catch (error) {
-            console.error('Error updating adaptive coach:', error);
-            // Fallback to statistical insights only
-            const analyzer = new PatternAnalyzer(this.allEvents || [], this.homeTimezone);
-            const insights = analyzer.generateInsights();
-            this.renderStatisticalInsights(insights, container);
-        }
-    }
-
-    async fetchAIInsights() {
-        try {
-            if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh()) {
-                return this.cachedAIInsights;
-            }
-
-            const response = await fetch('/api/ai-insights');
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-            if (data.success) {
-                this.cachedAIInsights = data;
-            }
-            return data;
-        } catch (error) {
-            console.warn('Failed to fetch AI insights, using statistical only:', error);
-            return null;
-        }
-    }
-
-    isAIInsightsFresh() {
-        if (!this.cachedAIInsights || !this.cachedAIInsights.generatedAt) {
-            return false;
-        }
-        const ageMs = Date.now() - new Date(this.cachedAIInsights.generatedAt).getTime();
-        return ageMs < 6 * 60 * 60 * 1000; // 6 hours
-    }
-
-    renderEnhancedInsights(statisticalInsights, aiInsights, container) {
-        let insightsHtml = '';
-
-        // Add AI insights first if available
-        if (aiInsights?.success && aiInsights.aiEnhanced?.insights?.length > 0) {
-            insightsHtml += aiInsights.aiEnhanced.insights.slice(0, 2).map(insight => {
-                const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
-                                       insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-                const title = this.escapeHtml(insight.title || '');
-                const description = this.escapeHtml(insight.description || '');
-                const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-                const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-                return `
-                    <div class="insights-card coach-insight ai-insight ${typeClass}">
-                        <div class="insight-header">
-                            <h4>🤖 ${title}</h4>
-                            <span class="ai-badge">AI</span>
-                            ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
-                        </div>
-                        <p class="insight-description">${description}</p>
-                        ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                        <p class="insight-data ai-source">Powered by DeepSeek AI</p>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // Add statistical insights
-        if (statisticalInsights && statisticalInsights.length > 0) {
-            insightsHtml += statisticalInsights.slice(0, 2).map(insight => {
-                const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
-                                       insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-                const title = this.escapeHtml(insight.title || '');
-                const description = this.escapeHtml(insight.description || '');
-                const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-                const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-                const peakLabel = insight.stats?.hour !== undefined
-                    ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
-                    : insight.stats?.windowMinutes !== undefined
-                        ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
-                        : '';
-                const statsDetails = insight.stats ? `
-                    <p class="insight-data">
-                        📊 ${insight.stats.sampleCount} samples,
-                        avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
-                        (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
-                        z=${insight.stats.zScore})
-                    </p>
-                    ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
-                ` : '';
-                const dataPointsLine = !insight.stats && insight.dataPoints > 0
-                    ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
-                    : '';
-                return `
-                    <div class="insights-card coach-insight statistical-insight ${typeClass}">
-                        <div class="insight-header">
-                            <h4>📊 ${title}</h4>
-                            ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
-                        </div>
-                        <p class="insight-description">${description}</p>
-                        ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                        ${statsDetails || dataPointsLine}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        if (!insightsHtml) {
-            container.innerHTML = '<p class="no-data">No insights yet - keep tracking!</p>';
-            return;
-        }
-
-        container.innerHTML = `
-            <div class="intelligence-card">
-                <h3>🎯 Adaptive Parenting Coach</h3>
-                <div class="coach-insights">
-                    ${insightsHtml}
-                </div>
-                ${aiInsights?.dataQuality ? `
-                    <div class="data-quality">
-                        <p>📈 Data: ${aiInsights.dataQuality.days} days, ${aiInsights.dataQuality.totalEvents} events</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    }
-
-    renderStatisticalInsights(insights, container) {
         if (!insights || insights.length === 0) {
             container.innerHTML = '<p class="no-data">No insights yet - keep tracking!</p>';
             return;
         }
 
+        // Render insights
         const insightsHtml = insights.slice(0, 3).map(insight => {
             const confidenceColor = insight.confidence > 0.7 ? '#10b981' :
                                    insight.confidence > 0.4 ? '#f59e0b' : '#ef4444';
-            const title = this.escapeHtml(insight.title || '');
-            const description = this.escapeHtml(insight.description || '');
-            const recommendation = insight.recommendation ? this.escapeHtml(insight.recommendation) : '';
-            const typeClass = (insight.type || 'general').toString().replace(/[^a-z0-9_-]/gi, '');
-            const peakLabel = insight.stats?.hour !== undefined
-                ? `⏰ Peak hour: ${String(insight.stats.hour).padStart(2, '0')}:00`
-                : insight.stats?.windowMinutes !== undefined
-                    ? `⏰ Optimal window: ~${insight.stats.windowMinutes} min`
-                    : '';
-            const statsDetails = insight.stats ? `
-                <p class="insight-data">
-                    📊 ${insight.stats.sampleCount} samples,
-                    avg ${insight.stats.averageSleepMinutes}m vs ${insight.stats.overallAverageMinutes}m
-                    (${insight.stats.improvementMinutes >= 0 ? '+' : ''}${insight.stats.improvementMinutes}m,
-                    z=${insight.stats.zScore})
-                </p>
-                ${peakLabel ? `<p class="insight-data">${peakLabel}</p>` : ''}
-            ` : '';
-            const dataPointsLine = !insight.stats && insight.dataPoints > 0
-                ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>`
-                : '';
             return `
-                <div class="insights-card coach-insight ${typeClass}">
+                <div class="insights-card coach-insight ${insight.type}">
                     <div class="insight-header">
-                        <h4>${title}</h4>
+                        <h4>${insight.title}</h4>
                         ${insight.confidence > 0 ? `<span class="confidence" style="background: ${confidenceColor}" title="Confidence: ${Math.round(insight.confidence * 100)}%">${Math.round(insight.confidence * 100)}%</span>` : ''}
                     </div>
-                    <p class="insight-description">${description}</p>
-                    ${recommendation ? `<p class="insight-recommendation">💡 ${recommendation}</p>` : ''}
-                    ${statsDetails || dataPointsLine}
+                    <p class="insight-description">${insight.description}</p>
+                    ${insight.recommendation ? `<p class="insight-recommendation">💡 ${insight.recommendation}</p>` : ''}
+                    ${insight.dataPoints > 0 ? `<p class="insight-data">📊 Based on ${insight.dataPoints} data points</p>` : ''}
                 </div>
             `;
         }).join('');
@@ -2616,6 +1958,7 @@ class BabyTracker {
                 return;
             }
 
+            const sourceEvents = this.allEvents && this.allEvents.length ? this.allEvents : this.events;
             const tz = this.homeTimezone || this.localTimezone;
             const now = new Date();
             const startOfDay = new Date(now.toLocaleString('en-US', { timeZone: tz }));
@@ -2623,7 +1966,11 @@ class BabyTracker {
             const endOfDay = new Date(startOfDay);
             endOfDay.setHours(23, 59, 59, 999);
 
-            const todayEvents = this.getTodayEvents();
+            const todayEvents = sourceEvents.filter(event => {
+                const eventDate = new Date(event.timestamp);
+                const eventInTz = new Date(eventDate.toLocaleString('en-US', { timeZone: tz }));
+                return eventInTz >= startOfDay && eventInTz <= endOfDay;
+            });
 
             hoursContainer.innerHTML = '<div class="timeline-hours-labels"></div>';
             const labelsContainer = hoursContainer.querySelector('.timeline-hours-labels');
@@ -2690,11 +2037,6 @@ class BabyTracker {
                 const config = this.EVENT_CONFIG[normalizedType] || {};
 
                 if (normalizedType === 'sleep') {
-                    // Guard against legacy records with null sleep_start_time
-                    if (!event.sleep_start_time) {
-                        // Skip legacy sleep events without proper start time
-                        return;
-                    }
                     // Handle both completed and ongoing sleep sessions
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date(); // Use current time for ongoing sessions
