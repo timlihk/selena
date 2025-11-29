@@ -12,6 +12,9 @@ class DeepSeekEnhancedAnalyzer {
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.3;
         this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 2000;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
+        this.goal = options.goal || null;
+        this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
+        this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 15;
     }
 
     hasSufficientData() {
@@ -29,13 +32,25 @@ class DeepSeekEnhancedAnalyzer {
 
     // Extract statistical patterns for AI enhancement
     extractStatisticalPatterns() {
+        const { recentEvents, olderEventsSummary } = this.splitEventsByLookback();
+        const analyzer = new DeepSeekEnhancedAnalyzer(recentEvents, this.timezone, this.apiKey, {
+            model: this.model,
+            temperature: this.temperature,
+            maxTokens: this.maxTokens,
+            retries: this.retries,
+            goal: this.goal,
+            concerns: this.concerns,
+            lookbackDays: this.lookbackDays
+        });
+
         const patterns = {
-            feedingToSleep: this.analyzeFeedingToSleep(),
-            wakeWindows: this.analyzeWakeWindows(),
-            sleepDistribution: this.analyzeSleepDistribution(),
-            feedingPatterns: this.analyzeFeedingPatterns(),
-            diaperPatterns: this.analyzeDiaperPatterns(),
-            overallStats: this.getOverallStats()
+            feedingToSleep: analyzer.analyzeFeedingToSleep(),
+            wakeWindows: analyzer.analyzeWakeWindows(),
+            sleepDistribution: analyzer.analyzeSleepDistribution(),
+            feedingPatterns: analyzer.analyzeFeedingPatterns(),
+            diaperPatterns: analyzer.analyzeDiaperPatterns(),
+            overallStats: analyzer.getOverallStats(),
+            olderSummary: olderEventsSummary
         };
         return patterns;
     }
@@ -169,6 +184,40 @@ class DeepSeekEnhancedAnalyzer {
         };
     }
 
+    splitEventsByLookback() {
+        if (!this.lookbackDays || this.events.length === 0) {
+            return { recentEvents: this.events, olderEventsSummary: null };
+        }
+        const cutoff = Date.now() - (this.lookbackDays * 24 * 60 * 60 * 1000);
+        const recentEvents = this.events.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+        const olderEvents = this.events.filter(e => new Date(e.timestamp).getTime() < cutoff);
+
+        const summarize = (evts) => {
+            if (!evts || evts.length === 0) return null;
+            const total = evts.length;
+            const byType = evts.reduce((acc, e) => {
+                acc[e.type] = (acc[e.type] || 0) + 1;
+                return acc;
+            }, {});
+            const sleepAvg = this.averageAmountFor(evts, 'sleep');
+            const milkAvg = this.averageAmountFor(evts, 'milk');
+            const first = new Date(Math.min(...evts.map(e => new Date(e.timestamp).getTime()))).toISOString();
+            const last = new Date(Math.max(...evts.map(e => new Date(e.timestamp).getTime()))).toISOString();
+            return { total, byType, sleepAvg, milkAvg, first, last };
+        };
+
+        return {
+            recentEvents,
+            olderEventsSummary: summarize(olderEvents)
+        };
+    }
+
+    averageAmountFor(events, type) {
+        const filtered = events.filter(e => e.type === type && Number.isFinite(e.amount));
+        if (!filtered.length) return 0;
+        return Math.round(filtered.reduce((sum, e) => sum + e.amount, 0) / filtered.length);
+    }
+
     groupByHour(correlations) {
         const byHour = {};
         correlations.forEach(c => {
@@ -265,6 +314,8 @@ Profile:
 Data Coverage:
 - Data period: ${patterns.overallStats.dataDays} days
 - Total events: ${patterns.overallStats.totalEvents}
+ - Lookback used: ${this.lookbackDays} days
+${patterns.olderSummary ? `- Older data summary: ${JSON.stringify(patterns.olderSummary)}` : ''}
 
 Feeding:
 - Total feeds: ${patterns.feedingPatterns.totalFeeds}
@@ -418,7 +469,12 @@ Respond with strict JSON:
     // Generate combined insights (statistical + AI)
     async generateEnhancedInsights(context = {}) {
         const statisticalInsights = this.extractStatisticalPatterns();
-        const aiInsights = await this.analyzeWithDeepSeek(context);
+        const aiInsights = await this.analyzeWithDeepSeek({
+            ...context,
+            goal: context.goal || this.goal,
+            concerns: context.concerns || this.concerns,
+            olderSummary: statisticalInsights.olderSummary
+        });
 
         return {
             statistical: statisticalInsights,
