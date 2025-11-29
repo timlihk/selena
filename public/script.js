@@ -1644,41 +1644,6 @@ class BabyTracker {
         return ageMs < 6 * 60 * 60 * 1000; // 6 hours
     }
 
-    renderAIInsightsMeta(aiInsights) {
-        const generatedAt = aiInsights?.generatedAt || aiInsights?.aiEnhanced?.timestamp;
-        const ageUsed = aiInsights?.ageUsed || aiInsights?.aiEnhanced?.ageUsed;
-        const authError = aiInsights?.authError || aiInsights?.aiEnhanced?.authError;
-        const missingKey = aiInsights?.aiEnhanced?.missingApiKey;
-        const insufficient = aiInsights?.aiEnhanced?.insufficientData;
-        const nextRefresh = '03:00 (daily)';
-
-        const lines = [];
-        if (generatedAt) {
-            lines.push(`Generated: ${new Date(generatedAt).toLocaleString()}`);
-        } else {
-            lines.push('Generated: not yet');
-        }
-        lines.push(`Next auto-refresh: ${nextRefresh}`);
-        if (ageUsed !== undefined) {
-            lines.push(`Age used: ${ageUsed} weeks`);
-        }
-        if (authError) {
-            lines.push('AI key invalid or unauthorized');
-        }
-        if (missingKey) {
-            lines.push('AI key missing');
-        }
-        if (insufficient) {
-            lines.push('AI needs more data (keep logging)');
-        }
-
-        return `
-            <div class="ai-meta">
-                ${lines.map(line => `<span class="ai-meta-item">${this.escapeHtml(line)}</span>`).join(' • ')}
-            </div>
-        `;
-    }
-
     renderAIRefreshControls() {
         return `
             <div class="ai-controls">
@@ -1698,21 +1663,13 @@ class BabyTracker {
 
     async triggerAIRefresh(button, statusEl) {
         try {
-            const token = this.getAIRefreshToken();
-            if (!token) {
-                const entered = prompt('Enter AI refresh token (only needs once)');
-                if (!entered) return;
-                localStorage.setItem('aiRefreshToken', entered.trim());
-            }
-
             button.disabled = true;
             if (statusEl) statusEl.textContent = 'Refreshing...';
 
             const response = await fetch('/api/ai-insights/refresh', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'x-refresh-token': this.getAIRefreshToken()
+                    'Content-Type': 'application/json'
                 }
             });
             const data = await response.json().catch(() => ({}));
@@ -1731,10 +1688,6 @@ class BabyTracker {
         } finally {
             if (button) button.disabled = false;
         }
-    }
-
-    getAIRefreshToken() {
-        return localStorage.getItem('aiRefreshToken') || '';
     }
 
     renderEnhancedInsights(statisticalInsights, aiInsights, container) {
@@ -1817,7 +1770,6 @@ class BabyTracker {
                     <h3>🎯 Adaptive Parenting Coach</h3>
                     ${this.renderAIRefreshControls()}
                 </div>
-                ${meta}
                 <div class="coach-insights">
                     ${insightsHtml}
                 </div>
@@ -1880,7 +1832,6 @@ class BabyTracker {
                         <h3>🎯 Adaptive Parenting Coach</h3>
                         ${this.renderAIRefreshControls()}
                     </div>
-                    ${this.renderAIInsightsMeta(null)}
                     <div class="coach-insights">
                         ${insightsHtml}
                     </div>

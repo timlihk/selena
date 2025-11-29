@@ -16,7 +16,9 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.1.4
+### v1.3.0
+- **Simplified AI Refresh**: One-click AI insights refresh without token requirement
+- **Streamlined UI**: Cleaner Adaptive Coach interface
 - **DeepSeek AI Integration**: AI-powered analysis of sleep, feeding, and development patterns
 - **Baby Profile**: Store baby's name, date of birth, and track growth measurements
 - **Inline Profile Editing**: Edit profile directly with autosave
