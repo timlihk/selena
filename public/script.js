@@ -1637,52 +1637,6 @@ class BabyTracker {
         return ageMs < 6 * 60 * 60 * 1000; // 6 hours
     }
 
-    renderAIRefreshControls() {
-        return `
-            <div class="ai-controls">
-                <button id="aiRefreshBtn" class="btn-secondary small">↻ Refresh AI</button>
-                <span id="aiRefreshStatus" class="ai-refresh-status"></span>
-            </div>
-        `;
-    }
-
-    setupAIRefreshControls(container) {
-        const btn = container.querySelector('#aiRefreshBtn');
-        const statusEl = container.querySelector('#aiRefreshStatus');
-        if (!btn || btn.dataset.bound === 'true') return;
-        btn.dataset.bound = 'true';
-        btn.addEventListener('click', () => this.triggerAIRefresh(btn, statusEl));
-    }
-
-    async triggerAIRefresh(button, statusEl) {
-        try {
-            button.disabled = true;
-            if (statusEl) statusEl.textContent = 'Refreshing...';
-
-            const response = await fetch('/api/ai-insights/refresh', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `Refresh failed (HTTP ${response.status})`);
-            }
-
-            this.cachedAIInsights = data;
-            if (statusEl) statusEl.textContent = 'AI refreshed';
-            // Re-render to show fresh timestamp
-            this.updateAdaptiveCoach();
-        } catch (error) {
-            console.error('AI refresh failed:', error);
-            if (statusEl) statusEl.textContent = error.message || 'Refresh failed';
-            alert(error.message || 'AI refresh failed');
-        } finally {
-            if (button) button.disabled = false;
-        }
-    }
-
     renderEnhancedInsights(statisticalInsights, aiInsights, container) {
         // Deprecated: delegate to AI-only rendering
         this.renderAIInsightsOnly(aiInsights, container);
@@ -1695,14 +1649,10 @@ class BabyTracker {
             const errorMsg = aiInsights?.error || 'AI insights unavailable right now.';
             container.innerHTML = `
                 <div class="intelligence-card">
-                    <div class="coach-header">
-                        <h3>🎯 Adaptive Parenting Coach</h3>
-                        ${this.renderAIRefreshControls()}
-                    </div>
+                    <h3>🎯 Adaptive Parenting Coach</h3>
                     <p class="no-data">${this.escapeHtml(errorMsg)}</p>
                 </div>
             `;
-            this.setupAIRefreshControls(container);
             return;
         }
 
@@ -1729,10 +1679,7 @@ class BabyTracker {
 
         container.innerHTML = `
             <div class="intelligence-card">
-                <div class="coach-header">
-                    <h3>🎯 Adaptive Parenting Coach</h3>
-                    ${this.renderAIRefreshControls()}
-                </div>
+                <h3>🎯 Adaptive Parenting Coach</h3>
                 <div class="coach-insights">
                     ${insightsHtml}
                 </div>
@@ -1743,7 +1690,6 @@ class BabyTracker {
                 ` : ''}
             </div>
         `;
-        this.setupAIRefreshControls(container);
     }
 
     // Helper to format minutes as "Xh Ym"
