@@ -235,6 +235,11 @@ function isInsightsCacheStale() {
   return cacheAgeMs > INSIGHTS_CACHE_TTL_MS;
 }
 
+function getInsightsCacheKey(goal, concerns) {
+  const c = Array.isArray(concerns) ? concerns.join('|') : '';
+  return `${goal || ''}::${c}`;
+}
+
 async function checkDeepSeekHealth() {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -344,10 +349,10 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
       reason
     };
 
-    insightsCache.payload = payload;
+    const cacheKey = getInsightsCacheKey(options.goal, options.concerns);
+    insightsCache.payload = { ...payload, cacheKey };
     insightsCache.generatedAt = payload.generatedAt;
     insightsCache.eventCountAtGeneration = events.length;
-    insightsCache.cacheKey = getInsightsCacheKey(options.goal, options.concerns);
     return payload;
   } catch (error) {
     console.error('AI insights generation failed:', error);
@@ -359,7 +364,8 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
       generatedAt: new Date().toISOString(),
       authError: isAuthError
     };
-    insightsCache.payload = payload;
+    const cacheKey = getInsightsCacheKey(options.goal, options.concerns);
+    insightsCache.payload = { ...payload, cacheKey };
     insightsCache.generatedAt = payload.generatedAt;
     return payload;
   } finally {
@@ -469,7 +475,7 @@ app.get('/api/ai-insights', async (req, res) => {
     console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, cacheKeyMatch=${insightsCache.cacheKey === cacheKey}, shouldRegenerate=${shouldRegenerate}`);
 
     const payload = shouldRegenerate
-      ? await generateAndCacheInsights('api', { goal, concerns })
+      ? await generateAndCacheInsights('api', { goal, concerns, cacheKey })
       : insightsCache.payload;
 
     res.status(payload && payload.success ? 200 : 503).json(payload);
