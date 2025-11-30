@@ -2660,6 +2660,12 @@ class BabyTracker {
             const diapersBathTrackDiv = document.createElement('div');
             diapersBathTrackDiv.className = 'timeline-lane-track';
 
+            // Get today's date boundaries for filtering
+            const todayBoundaryStart = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+            todayBoundaryStart.setHours(0, 0, 0, 0);
+            const todayBoundaryEnd = new Date(todayBoundaryStart);
+            todayBoundaryEnd.setHours(23, 59, 59, 999);
+
             // Process events and separate into lanes
             todayEvents.forEach(event => {
                 const eventDate = new Date(event.timestamp);
@@ -2679,11 +2685,29 @@ class BabyTracker {
                     // Handle both completed and ongoing sleep sessions
                     const sleepStart = new Date(event.sleep_start_time);
                     const sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : new Date(); // Use current time for ongoing sessions
+
+                    // Get today's boundaries in the home timezone
+                    const todayStartInTz = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+                    todayStartInTz.setHours(0, 0, 0, 0);
+                    const todayEndInTz = new Date(todayStartInTz);
+                    todayEndInTz.setHours(23, 59, 59, 999);
+
+                    // Convert sleep times to home timezone for comparison
                     const sleepStartInTz = new Date(sleepStart.toLocaleString('en-US', { timeZone: tz }));
                     const sleepEndInTz = new Date(sleepEnd.toLocaleString('en-US', { timeZone: tz }));
 
-                    const startMinutes = sleepStartInTz.getHours() * 60 + sleepStartInTz.getMinutes();
-                    const endMinutes = sleepEndInTz.getHours() * 60 + sleepEndInTz.getMinutes();
+                    // Skip sleep events that ended before today started
+                    if (sleepEndInTz < todayStartInTz) {
+                        return;
+                    }
+
+                    // Clamp start time to today's start if sleep started yesterday
+                    const clampedStartInTz = sleepStartInTz < todayStartInTz ? todayStartInTz : sleepStartInTz;
+                    // Clamp end time to today's end if needed
+                    const clampedEndInTz = sleepEndInTz > todayEndInTz ? todayEndInTz : sleepEndInTz;
+
+                    const startMinutes = clampedStartInTz.getHours() * 60 + clampedStartInTz.getMinutes();
+                    const endMinutes = clampedEndInTz.getHours() * 60 + clampedEndInTz.getMinutes();
 
                     const startPosition = (startMinutes / (24 * 60)) * 100;
                     const endPosition = (endMinutes / (24 * 60)) * 100;
@@ -2744,6 +2768,11 @@ class BabyTracker {
 
                     sleepTrackDiv.appendChild(progressBar);
                 } else if (['milk', 'diaper', 'bath'].includes(normalizedType)) {
+                    // Skip non-sleep events that didn't occur today
+                    if (eventInTz < todayBoundaryStart || eventInTz > todayBoundaryEnd) {
+                        return;
+                    }
+
                     // Create marker for other event types and route to appropriate lanes
                     const marker = document.createElement('div');
                     marker.className = 'timeline-marker timeline-icon-marker';
