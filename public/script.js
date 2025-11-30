@@ -286,9 +286,10 @@ class BabyTracker {
             profileContent.innerHTML = `
                 <div class="no-data">
                     <p>Failed to load baby profile</p>
-                    <button class="btn-primary" onclick="babyTracker.showBabyProfileModal()">Try Again</button>
+                    <button class="btn-primary" id="retryProfileBtn">Try Again</button>
                 </div>
             `;
+            document.getElementById('retryProfileBtn')?.addEventListener('click', () => this.showBabyProfileModal());
         }
     }
 
@@ -385,7 +386,7 @@ class BabyTracker {
                     </div>
                     <div class="profile-actions">
                         <button type="submit" class="btn-save">💾 Save Profile</button>
-                        <button type="button" class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Cancel</button>
+                        <button type="button" class="btn-cancel btn-close-modal">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -415,7 +416,7 @@ class BabyTracker {
                 </div>
                 <div class="profile-actions">
                     <button type="submit" class="btn-save">💾 Save Profile</button>
-                    <button type="button" class="btn-cancel" onclick="babyTracker.hideBabyProfileModal()">Close</button>
+                    <button type="button" class="btn-cancel btn-close-modal">Close</button>
                 </div>
             </form>
         `;
@@ -581,6 +582,14 @@ class BabyTracker {
                 this.saveBabyMeasurement(measurementForm, container);
             });
         }
+
+        // Attach close modal handlers to all .btn-close-modal buttons
+        container.querySelectorAll('.btn-close-modal').forEach(btn => {
+            if (!btn.dataset.bound) {
+                btn.dataset.bound = 'true';
+                btn.addEventListener('click', () => this.hideBabyProfileModal());
+            }
+        });
     }
 
     setProfileStatus(container, message, type = 'info') {
@@ -781,6 +790,94 @@ class BabyTracker {
         this.showToast(message, 'info');
     }
 
+    /**
+     * Show a custom confirmation modal (replaces browser confirm())
+     * @param {string} message - The confirmation message
+     * @param {Object} options - Optional settings
+     * @param {string} options.title - Modal title (default: 'Confirm')
+     * @param {string} options.confirmText - Confirm button text (default: 'Yes')
+     * @param {string} options.cancelText - Cancel button text (default: 'Cancel')
+     * @param {string} options.type - Modal type: 'warning', 'danger', 'info' (default: 'warning')
+     * @returns {Promise<boolean>} - Resolves true if confirmed, false if cancelled
+     */
+    showConfirm(message, options = {}) {
+        const {
+            title = 'Confirm',
+            confirmText = 'Yes',
+            cancelText = 'Cancel',
+            type = 'warning'
+        } = options;
+
+        return new Promise((resolve) => {
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-modal-overlay';
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = `confirm-modal confirm-modal-${type}`;
+            modal.innerHTML = `
+                <div class="confirm-modal-header">
+                    <span class="confirm-modal-icon">${type === 'danger' ? '⚠️' : type === 'warning' ? '❓' : 'ℹ️'}</span>
+                    <h3>${this.escapeHtml(title)}</h3>
+                </div>
+                <div class="confirm-modal-body">
+                    <p>${this.escapeHtml(message)}</p>
+                </div>
+                <div class="confirm-modal-footer">
+                    <button class="btn-confirm-cancel">${this.escapeHtml(cancelText)}</button>
+                    <button class="btn-confirm-ok btn-confirm-${type}">${this.escapeHtml(confirmText)}</button>
+                </div>
+            `;
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            // Focus the cancel button by default for safety
+            const cancelBtn = modal.querySelector('.btn-confirm-cancel');
+            const confirmBtn = modal.querySelector('.btn-confirm-ok');
+            cancelBtn.focus();
+
+            const cleanup = () => {
+                overlay.classList.add('confirm-modal-closing');
+                modal.classList.add('confirm-modal-closing');
+                setTimeout(() => {
+                    overlay.remove();
+                }, 200);
+            };
+
+            // Handle cancel
+            cancelBtn.addEventListener('click', () => {
+                cleanup();
+                resolve(false);
+            });
+
+            // Handle confirm
+            confirmBtn.addEventListener('click', () => {
+                cleanup();
+                resolve(true);
+            });
+
+            // Handle click outside modal
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    cleanup();
+                    resolve(false);
+                }
+            });
+
+            // Handle escape key
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    cleanup();
+                    resolve(false);
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+        });
+    }
+
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
@@ -935,8 +1032,14 @@ class BabyTracker {
                 const errorData = await response.json();
                 if (errorData.requiresConfirmation) {
                     // Ask user to confirm the unusual duration
-                    const confirmed = confirm(
-                        `${errorData.error}\n\nDo you want to record this sleep session anyway?`
+                    const confirmed = await this.showConfirm(
+                        `${errorData.error}\n\nDo you want to record this sleep session anyway?`,
+                        {
+                            title: 'Unusual Sleep Duration',
+                            confirmText: 'Record Anyway',
+                            cancelText: 'Cancel',
+                            type: 'warning'
+                        }
                     );
 
                     if (confirmed) {
@@ -971,12 +1074,12 @@ class BabyTracker {
                         }
                         return;
                     }
-                        // User cancelled - just return without error
-                        if (button) {
-                            this.setButtonLoading(button, false);
-                            loadingActive = false;
-                        }
-                        return;
+                    // User cancelled - just return without error
+                    if (button) {
+                        this.setButtonLoading(button, false);
+                        loadingActive = false;
+                    }
+                    return;
 
                 }
             }
@@ -1152,6 +1255,15 @@ class BabyTracker {
     }
 
     async updateStats() {
+        const setStatsError = () => {
+            document.getElementById('milkCount').textContent = '-';
+            document.getElementById('pooCount').textContent = '-';
+            document.getElementById('bathCount').textContent = '-';
+            document.getElementById('sleepCount').textContent = '-';
+            document.getElementById('totalMilk').textContent = '-';
+            document.getElementById('totalSleep').textContent = '-';
+        };
+
         try {
             const response = await fetch('/api/stats/today');
             if (!response.ok) {
@@ -1167,12 +1279,8 @@ class BabyTracker {
             document.getElementById('totalSleep').textContent = stats.totalSleepHours || 0;
         } catch (error) {
             console.error('Error loading stats:', error);
-            document.getElementById('milkCount').textContent = '0';
-            document.getElementById('pooCount').textContent = '0';
-            document.getElementById('bathCount').textContent = '0';
-            document.getElementById('sleepCount').textContent = '0';
-            document.getElementById('totalMilk').textContent = '0';
-            document.getElementById('totalSleep').textContent = '0';
+            setStatsError();
+            this.showError('Unable to load daily stats');
         } finally {
             // Always update intelligent insights even if stats endpoint fails
             this.updateFeedingIntelligence();
@@ -2048,7 +2156,17 @@ class BabyTracker {
 
     // Remove a single event
     async removeEvent(eventId) {
-        if (!confirm('Are you sure you want to remove this event?')) {
+        const confirmed = await this.showConfirm(
+            'Are you sure you want to remove this event?',
+            {
+                title: 'Delete Event',
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+                type: 'danger'
+            }
+        );
+
+        if (!confirmed) {
             return;
         }
 

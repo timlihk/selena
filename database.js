@@ -114,9 +114,44 @@ function findMemoryEventIndexById(id) {
 // For Railway and other cloud platforms, always use SSL
 const sslConfig = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ? { rejectUnauthorized: false } : false;
 
+// Validate DATABASE_URL format
+function validateDatabaseUrl(url) {
+  if (!url) {return { valid: false, error: 'DATABASE_URL is not set' };}
+
+  // Check for valid PostgreSQL URL patterns
+  const validPatterns = [
+    /^postgres(ql)?:\/\/.+/i,  // postgres:// or postgresql://
+  ];
+
+  const isValidFormat = validPatterns.some(pattern => pattern.test(url));
+  if (!isValidFormat) {
+    return {
+      valid: false,
+      error: `Invalid DATABASE_URL format. Expected: postgresql://user:password@host:port/database, got: ${url.substring(0, 20)}...`
+    };
+  }
+
+  // Check for common issues
+  if (url.includes(' ')) {
+    return { valid: false, error: 'DATABASE_URL contains spaces - check for copy/paste errors' };
+  }
+
+  if (!url.includes('@')) {
+    return { valid: false, error: 'DATABASE_URL missing @ symbol - check format: postgresql://user:password@host:port/database' };
+  }
+
+  return { valid: true };
+}
+
 // Initialize pool only when DATABASE_URL is available
 try {
   if (!useMemoryStore) {
+    const validation = validateDatabaseUrl(process.env.DATABASE_URL);
+    if (!validation.valid) {
+      console.error(`❌ Database URL validation failed: ${validation.error}`);
+      throw new Error(validation.error);
+    }
+
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: sslConfig,
@@ -125,13 +160,16 @@ try {
       idleTimeoutMillis: 30000,
       max: 20
     });
-    console.log('Database pool initialized successfully');
+    console.log('✅ Database pool initialized successfully');
   } else {
     console.warn('⚠️  DATABASE_URL is not set. Falling back to in-memory data store (not for production use).');
   }
 } catch (error) {
   console.error('Database pool initialization failed:', error.message);
-  // Don't throw - allow server to start
+  // Don't throw - allow server to start with memory fallback
+  if (!useMemoryStore) {
+    console.warn('⚠️  Falling back to in-memory data store due to database error');
+  }
 }
 
 // Helper function to check if database is connected
