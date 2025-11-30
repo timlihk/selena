@@ -1604,7 +1604,10 @@ class BabyTracker {
         }
     }
 
-    async fetchAIInsights() {
+    async fetchAIInsights(retryCount = 0) {
+        const MAX_RETRIES = 2;
+        const RETRY_DELAY_MS = 3000;
+
         try {
             if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh()) {
                 return this.cachedAIInsights;
@@ -1615,6 +1618,18 @@ class BabyTracker {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             const data = await response.json();
+
+            // Check if we have actual insights (could be in different paths)
+            const hasInsights = data.success &&
+                ((data.aiEnhanced?.insights?.length > 0) || (data.insights?.length > 0));
+
+            // If no insights yet and we haven't exhausted retries, wait and retry
+            if (!hasInsights && retryCount < MAX_RETRIES) {
+                console.log(`[AI Insights] No insights yet, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                return this.fetchAIInsights(retryCount + 1);
+            }
+
             if (data.success) {
                 this.cachedAIInsights = data;
             }
