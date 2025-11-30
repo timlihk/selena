@@ -66,6 +66,8 @@ class BabyTracker {
         this.homeTimezone = this.defaultHomeTimezone;
         this.cachedAIInsights = null;
         this.profileAutoSaveTimer = null;
+        this.activeSleepTimer = null;
+        this.activeSleepSessions = [];
         this.init();
     }
 
@@ -77,7 +79,8 @@ class BabyTracker {
         await this.loadEvents();
         await Promise.all([
             this.updateStats(),
-            this.renderTimeline()
+            this.renderTimeline(),
+            this.checkActiveSleep()
         ]);
     }
 
@@ -125,6 +128,81 @@ class BabyTracker {
             option.textContent = user;
             userSelect.appendChild(option);
         });
+    }
+
+    // Check for active sleep sessions and update the banner
+    async checkActiveSleep() {
+        try {
+            const response = await fetch('/api/sleep/active');
+            if (!response.ok) {
+                throw new Error('Failed to check active sleep');
+            }
+            const data = await response.json();
+
+            this.activeSleepSessions = data.sessions || [];
+            this.updateActiveSleepBanner();
+
+            // Start timer to update duration every minute if there's an active session
+            if (data.hasActiveSleep) {
+                this.startActiveSleepTimer();
+            } else {
+                this.stopActiveSleepTimer();
+            }
+        } catch (error) {
+            console.warn('Failed to check active sleep:', error);
+        }
+    }
+
+    // Update the active sleep banner UI
+    updateActiveSleepBanner() {
+        const banner = document.getElementById('activeSleepBanner');
+        const durationEl = document.getElementById('sleepDuration');
+        const startedByEl = document.getElementById('sleepStartedBy');
+
+        if (!banner) {return;}
+
+        if (this.activeSleepSessions.length === 0) {
+            banner.style.display = 'none';
+            document.body.classList.remove('has-sleep-banner');
+            return;
+        }
+
+        // Show the most recent active sleep session
+        const session = this.activeSleepSessions[0];
+        const startTime = new Date(session.startTime);
+
+        // Calculate current duration
+        const elapsedMs = Date.now() - startTime.getTime();
+        const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+        const durationFormatted = elapsedMinutes >= 60
+            ? `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`
+            : `${elapsedMinutes}m`;
+
+        durationEl.textContent = durationFormatted;
+
+        // Format start time in home timezone
+        const startFormatted = this.formatDateTimeInTimezone(startTime, this.homeTimezone);
+        startedByEl.textContent = `Started at ${startFormatted} by ${session.userName}`;
+
+        banner.style.display = 'block';
+        document.body.classList.add('has-sleep-banner');
+    }
+
+    // Start timer to update sleep duration every minute
+    startActiveSleepTimer() {
+        if (this.activeSleepTimer) {return;} // Already running
+
+        this.activeSleepTimer = setInterval(() => {
+            this.updateActiveSleepBanner();
+        }, 60000); // Update every minute
+    }
+
+    // Stop the active sleep timer
+    stopActiveSleepTimer() {
+        if (this.activeSleepTimer) {
+            clearInterval(this.activeSleepTimer);
+            this.activeSleepTimer = null;
+        }
     }
 
     setCurrentTime(date = new Date()) {
@@ -1108,6 +1186,7 @@ class BabyTracker {
 
                         await this.loadEvents();
                         await this.updateStats();
+                        await this.checkActiveSleep(); // Update sleep banner
                         this.setCurrentTime();
 
                         const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
@@ -1142,6 +1221,7 @@ class BabyTracker {
 
             await this.loadEvents();
             await this.updateStats();
+            await this.checkActiveSleep(); // Update sleep banner
             this.setCurrentTime();
 
             const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';

@@ -6,9 +6,10 @@ const rateLimit = require('express-rate-limit');
 const { initializeDatabase, Event, BabyProfile, withTransaction } = require('./database');
 const { DeepSeekEnhancedAnalyzer, PatternDetector } = require('./deepseek_analyzer');
 const axios = require('axios');
+const config = require('./config');
 
 // Environment-aware logging - suppress verbose logs in production
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_PRODUCTION = config.IS_PRODUCTION;
 const logger = {
   log: (...args) => { if (!IS_PRODUCTION) {console.log(...args);} },
   warn: (...args) => console.warn(...args), // Always show warnings
@@ -16,10 +17,10 @@ const logger = {
   info: (...args) => { if (!IS_PRODUCTION) {console.log(...args);} }
 };
 
-// Input validation constants - centralized for consistency
-const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
-const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
-const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
+// Input validation constants - imported from centralized config
+const ALLOWED_USERS = config.ALLOWED_USERS;
+const ALLOWED_EVENT_TYPES = config.ALLOWED_EVENT_TYPES;
+const ALLOWED_DIAPER_SUBTYPES = config.ALLOWED_DIAPER_SUBTYPES;
 
 // Enhanced validation functions
 function validateEventType(type) {
@@ -81,6 +82,32 @@ function validateTimestamp(timestamp) {
   if (eventDate < maxPastDate) {
     throw new Error(`Event timestamp cannot be more than ${TIMESTAMP_MAX_PAST_DAYS} days in the past`);
   }
+}
+
+// Baby measurement validation with age-appropriate ranges
+// Ranges based on WHO growth standards for 0-2 years
+const MEASUREMENT_RANGES = {
+  weight: { min: 1.5, max: 20, unit: 'kg' },      // 1.5kg (preemie) to 20kg (2 years)
+  height: { min: 40, max: 100, unit: 'cm' },      // 40cm (preemie) to 100cm (2 years)
+  headCircumference: { min: 30, max: 55, unit: 'cm' } // 30cm (preemie) to 55cm (2 years)
+};
+
+function validateMeasurementValue(value, type, fieldName) {
+  if (value === null || value === undefined || value === '') {
+    return null; // Optional field
+  }
+
+  const numValue = parseFloat(value);
+  if (Number.isNaN(numValue)) {
+    throw new Error(`${fieldName} must be a valid number`);
+  }
+
+  const range = MEASUREMENT_RANGES[type];
+  if (numValue < range.min || numValue > range.max) {
+    throw new Error(`${fieldName} must be between ${range.min} and ${range.max} ${range.unit}`);
+  }
+
+  return numValue;
 }
 
 // Enhanced sleep validation functions
@@ -157,37 +184,26 @@ async function canStartNewSleep(userName) {
   return true;
 }
 
+// Use centralized config - CONSTANTS kept for backward compatibility with existing code
 const CONSTANTS = {
-  ALLOWED_EVENT_TYPES: ['milk', 'poo', 'diaper', 'bath', 'sleep'],
-  ALLOWED_DIAPER_SUBTYPES: ['pee', 'poo', 'both'],
-  ALLOWED_USERS: ['Charie', 'Angie', 'Tim', 'Mengyu'],
-  VALIDATION: {
-    MAX_FILTER_LENGTH: 1000,
-    MAX_MILK_AMOUNT: 500,
-    MAX_SLEEP_DURATION: 480,
-    TIMESTAMP_MAX_PAST_DAYS: 365
-  },
-  RATE_LIMIT: {
-    WINDOW_MS: 15 * 60 * 1000,
-    MAX_REQUESTS: 100
-  },
-  DB_POOL: {
-    MAX: 20,
-    IDLE_TIMEOUT_MS: 30000,
-    CONNECTION_TIMEOUT_MS: 2000
-  }
+  ALLOWED_EVENT_TYPES: config.ALLOWED_EVENT_TYPES,
+  ALLOWED_DIAPER_SUBTYPES: config.ALLOWED_DIAPER_SUBTYPES,
+  ALLOWED_USERS: config.ALLOWED_USERS,
+  VALIDATION: config.VALIDATION,
+  RATE_LIMIT: config.RATE_LIMIT,
+  DB_POOL: config.DB_POOL
 };
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
+const HOME_TIMEZONE = config.HOME_TIMEZONE;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.PORT;
 
-// AI insights scheduling and caching
-const INSIGHTS_CACHE_TTL_MS = 23 * 60 * 60 * 1000; // refresh roughly once a day
-const INSIGHTS_REFRESH_HOUR = 3; // 03:00 server local time
-const INSIGHTS_INVALIDATION_THRESHOLD = 5; // Invalidate cache after N new events
-const INSIGHTS_FAILURE_TTL_MS = 10 * 60 * 1000; // retry failures sooner (10 minutes)
+// AI insights scheduling and caching - from centralized config
+const INSIGHTS_CACHE_TTL_MS = config.INSIGHTS_CACHE.TTL_MS;
+const INSIGHTS_REFRESH_HOUR = config.INSIGHTS_CACHE.REFRESH_HOUR;
+const INSIGHTS_INVALIDATION_THRESHOLD = config.INSIGHTS_CACHE.INVALIDATION_THRESHOLD;
+const INSIGHTS_FAILURE_TTL_MS = config.INSIGHTS_CACHE.FAILURE_TTL_MS;
 const insightsCache = {
   payload: null,
   generatedAt: null,
@@ -195,7 +211,7 @@ const insightsCache = {
   eventCountAtGeneration: 0,
   cacheKey: null  // Track goal/concerns for cache invalidation
 };
-const MANUAL_REFRESH_COOLDOWN_MS = parseInt(process.env.DEEPSEEK_REFRESH_COOLDOWN_MS || `${5 * 60 * 1000}`, 10);
+const MANUAL_REFRESH_COOLDOWN_MS = config.DEEPSEEK.REFRESH_COOLDOWN_MS;
 let lastManualRefreshAt = 0;
 
 // Generate cache key from goal/concerns
@@ -320,7 +336,7 @@ async function getBabyAgeWeeks(defaultWeeks = 8) {
 let insightsGenerationPromise = null;
 
 // Timeout wrapper for async operations
-const AI_INSIGHTS_TIMEOUT_MS = 60000; // 60 seconds max for entire generation
+const AI_INSIGHTS_TIMEOUT_MS = config.INSIGHTS_CACHE.TIMEOUT_MS;
 
 function withTimeout(promise, ms, operation = 'Operation') {
   return Promise.race([
@@ -932,6 +948,41 @@ app.get('/api/stats/today', async (req, res) => {
   }
 });
 
+// Get active sleep session (incomplete sleep)
+app.get('/api/sleep/active', async (req, res) => {
+  try {
+    // Check all users for active sleep sessions
+    const activeSessions = [];
+    for (const user of ALLOWED_USERS) {
+      const incompleteSleep = await Event.getLastIncompleteSleep(user);
+      if (incompleteSleep) {
+        const startTime = new Date(incompleteSleep.sleep_start_time);
+        const elapsedMs = Date.now() - startTime.getTime();
+        const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+
+        activeSessions.push({
+          id: incompleteSleep.id,
+          userName: incompleteSleep.user_name,
+          startTime: incompleteSleep.sleep_start_time,
+          elapsedMinutes,
+          elapsedFormatted: elapsedMinutes >= 60
+            ? `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`
+            : `${elapsedMinutes}m`
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      hasActiveSleep: activeSessions.length > 0,
+      sessions: activeSessions
+    });
+  } catch (error) {
+    console.error('Error checking active sleep:', error);
+    apiError(res, 500, 'Failed to check active sleep');
+  }
+});
+
 // Delete an event
 app.delete('/api/events/:id', async (req, res) => {
   try {
@@ -1194,11 +1245,32 @@ app.post('/api/baby-measurements', async (req, res) => {
       });
     }
 
+    // Validate measurement values with age-appropriate ranges
+    let validatedWeight, validatedHeight, validatedHead;
+    try {
+      validatedWeight = validateMeasurementValue(weightKg, 'weight', 'Weight');
+      validatedHeight = validateMeasurementValue(heightCm, 'height', 'Height');
+      validatedHead = validateMeasurementValue(headCircumferenceCm, 'headCircumference', 'Head circumference');
+    } catch (validationError) {
+      return res.status(400).json({
+        success: false,
+        error: validationError.message
+      });
+    }
+
+    // Require at least one measurement
+    if (validatedWeight === null && validatedHeight === null && validatedHead === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one measurement (weight, height, or head circumference) is required'
+      });
+    }
+
     const measurement = await BabyProfile.addMeasurement(
       measurementDate,
-      weightKg || null,
-      heightCm || null,
-      headCircumferenceCm || null,
+      validatedWeight,
+      validatedHeight,
+      validatedHead,
       notes || null
     );
 

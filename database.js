@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 require('dotenv').config();
+const config = require('./config');
 
 // Custom error classes
 class DatabaseError extends Error {
@@ -24,8 +25,8 @@ class ConcurrentUpdateError extends DatabaseError {
   }
 }
 
-// Timezone configuration
-const HOME_TIMEZONE = process.env.BABY_HOME_TIMEZONE || 'Asia/Hong_Kong';
+// Timezone configuration - imported from centralized config
+const HOME_TIMEZONE = config.HOME_TIMEZONE;
 const HISTORICAL_DATA_TIMEZONE = process.env.DB_STORAGE_TIMEZONE || 'UTC';
 
 const useMemoryStore = !process.env.DATABASE_URL;
