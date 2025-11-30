@@ -1962,11 +1962,8 @@ class BabyTracker {
         }).join('');
 
         container.innerHTML = `
-            <div class="intelligence-card alerts-card">
-                <h3>⚠️ Smart Alerts</h3>
-                <div class="alerts-list">
-                    ${alertsHtml}
-                </div>
+            <div class="alerts-list">
+                ${alertsHtml}
             </div>
         `;
     }
