@@ -285,7 +285,7 @@ class BabyTracker {
             const requestData = {
                 type: eventType,
                 amount: eventType === 'milk' ? parseInt(milkAmount, 10) : null,
-                userName: userName,
+                userName,
                 timestamp: timestampIso
             };
 
@@ -299,7 +299,7 @@ class BabyTracker {
             const response = await fetch('/api/events', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestData)
             });
@@ -328,7 +328,7 @@ class BabyTracker {
             }
         } catch (error) {
             console.error('Error adding event:', error);
-            alert('Failed to add event: ' + error.message);
+            alert(`Failed to add event: ${  error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(submitButton, false);
@@ -374,12 +374,12 @@ class BabyTracker {
             const response = await fetch('/api/events', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     type: 'sleep',
-                    sleepSubType: sleepSubType,
-                    userName: userName,
+                    sleepSubType,
+                    userName,
                     timestamp: eventTimestamp
                 })
             });
@@ -408,7 +408,7 @@ class BabyTracker {
             }
         } catch (error) {
             console.error('Error adding sleep event:', error);
-            alert('Failed to add sleep event: ' + error.message);
+            alert(`Failed to add sleep event: ${  error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(button, false);
@@ -632,7 +632,7 @@ class BabyTracker {
             minutesSince,
             intervals: intervals.map(h => (h).toFixed(1)),
             avgInterval: avgInterval.toFixed(1),
-            nextFeedDue: nextFeedDue,
+            nextFeedDue,
             minutesUntilNext,
             isOverdue: minutesUntilNext < 0
         };
@@ -718,8 +718,8 @@ class BabyTracker {
             sleepPercentage: Math.round(sleepPercentage),
             isUnderslept: sleepPercentage < 85,
             last3DaysTotalHours: last3DaysTotalHours.toFixed(1),
-            last3DaysSessionCount: last3DaysSessionCount,
-            last3DaysBreakdown: last3DaysBreakdown
+            last3DaysSessionCount,
+            last3DaysBreakdown
         };
     }
 
@@ -765,7 +765,7 @@ class BabyTracker {
 
             // Get sleep events for this day
             const daySleepEvents = this.allEvents.filter(event => {
-                if (event.type !== 'sleep') return false;
+                if (event.type !== 'sleep') {return false;}
                 const eventDate = new Date(event.timestamp);
                 return eventDate >= dayStart && eventDate <= dayEnd;
             });
@@ -904,7 +904,7 @@ class BabyTracker {
         const intelligence = this.calculateFeedingIntelligence();
         const container = document.getElementById('feedingIntelligence');
 
-        if (!container) return;
+        if (!container) {return;}
 
         if (!intelligence) {
             container.innerHTML = '<p class="no-data">No feeding data yet today</p>';
@@ -949,7 +949,7 @@ class BabyTracker {
         const quality = this.calculateSleepQuality();
         const container = document.getElementById('sleepQuality');
 
-        if (!container) return;
+        if (!container) {return;}
 
         if (!quality) {
             container.innerHTML = '<p class="no-data">No sleep data yet today</p>';
@@ -968,12 +968,10 @@ class BabyTracker {
         if (quality.last3DaysBreakdown && quality.last3DaysBreakdown.length > 0) {
             breakdownHtml = quality.last3DaysBreakdown
                 .filter(day => day.label !== 'Today') // Exclude today as it's shown in "Total today"
-                .map(day => {
-                    return `<div class="intel-row">
+                .map(day => `<div class="intel-row">
                         <span class="intel-label">${day.label}:</span>
                         <span class="intel-value">${day.hours.toFixed(1)}h (${day.sessionCount} sessions)</span>
-                    </div>`;
-                }).join('');
+                    </div>`).join('');
         }
 
         container.innerHTML = `
@@ -1010,7 +1008,7 @@ class BabyTracker {
     // Update Adaptive Coach insights
     updateAdaptiveCoach() {
         const container = document.getElementById('adaptiveCoach');
-        if (!container) return;
+        if (!container) {return;}
 
         // Create analyzer and generate insights
         const analyzer = new PatternAnalyzer(this.events || [], this.homeTimezone);
@@ -1232,7 +1230,7 @@ class BabyTracker {
         const health = this.calculateDiaperHealth();
         const container = document.getElementById('diaperHealth');
 
-        if (!container) return;
+        if (!container) {return;}
 
         if (!health) {
             container.innerHTML = '<p class="no-data">No diaper data yet today</p>';
@@ -1286,7 +1284,7 @@ class BabyTracker {
         const alerts = this.calculateSmartAlerts();
         const container = document.getElementById('smartAlerts');
 
-        if (!container) return;
+        if (!container) {return;}
 
         if (!alerts || alerts.length === 0) {
             container.innerHTML = '<p class="no-data">✅ No alerts - everything looks good!</p>';
@@ -1350,7 +1348,7 @@ class BabyTracker {
             loadingActive = false;
         } catch (error) {
             console.error('Error removing event:', error);
-            alert('Failed to remove event: ' + error.message);
+            alert(`Failed to remove event: ${  error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(deleteButton, false);
@@ -1361,10 +1359,10 @@ class BabyTracker {
     // Start inline editing for an event
     startInlineEdit(eventId) {
         const event = this.events.find(e => e.id === eventId);
-        if (!event) return;
+        if (!event) {return;}
 
         const eventItem = document.querySelector(`[data-event-id="${eventId}"]`);
-        if (!eventItem) return;
+        if (!eventItem) {return;}
 
         const config = this.EVENT_CONFIG[event.type] || {};
 
@@ -1484,7 +1482,7 @@ class BabyTracker {
     // Save inline edit changes
     async saveInlineEdit(eventId) {
         const eventItem = document.querySelector(`[data-event-id="${eventId}"]`);
-        if (!eventItem) return;
+        if (!eventItem) {return;}
 
         const typeSelect = eventItem.querySelector('.edit-type');
         const amountInput = eventItem.querySelector('.edit-amount');
@@ -1542,7 +1540,7 @@ class BabyTracker {
             const response = await fetch(`/api/events/${eventId}`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestBody)
             });
@@ -1567,7 +1565,7 @@ class BabyTracker {
             this.showButtonSuccess(saveButton, 'Saved!');
         } catch (error) {
             console.error('Error updating event:', error);
-            alert('Failed to update event: ' + error.message);
+            alert(`Failed to update event: ${  error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(saveButton, false);
@@ -1583,7 +1581,7 @@ class BabyTracker {
     // Apply date filter
     async applyDateFilter(filterType) {
         try {
-            let filter = {};
+            const filter = {};
             const today = new Date();
             const todayString = this.formatLocalDate(today);
 
@@ -1652,8 +1650,8 @@ class BabyTracker {
 
         try {
             const filter = {
-                startDate: startDate,
-                endDate: endDate
+                startDate,
+                endDate
             };
 
             const response = await fetch(`/api/events?filter=${encodeURIComponent(JSON.stringify(filter))}`);
@@ -1779,9 +1777,9 @@ class BabyTracker {
     }
 
     updateThemeIcon(button) {
-        if (!button) return;
+        if (!button) {return;}
         const iconSpan = button.querySelector('.theme-icon');
-        if (!iconSpan) return;
+        if (!iconSpan) {return;}
         iconSpan.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
     }
 
@@ -1901,7 +1899,7 @@ class BabyTracker {
     }
 
     setButtonLoading(button, isLoading, loadingText = null) {
-        if (!button) return;
+        if (!button) {return;}
 
         if (isLoading) {
             button.dataset.originalText = button.textContent;
@@ -1921,7 +1919,7 @@ class BabyTracker {
     }
 
     setLoadingOverlay(section, show) {
-        if (!section) return;
+        if (!section) {return;}
         let overlay = section.querySelector('.loading-overlay');
 
         if (show && !overlay) {
@@ -2070,7 +2068,7 @@ class BabyTracker {
                     if (event.sleep_end_time) {
                         tooltipText += ` to ${this.formatDisplayTime(sleepEnd)}`;
                     } else {
-                        tooltipText += ` to now (ongoing)`;
+                        tooltipText += ' to now (ongoing)';
                     }
 
                     tooltipText += `\nDuration: ${duration} minutes`;
@@ -2078,7 +2076,7 @@ class BabyTracker {
                         tooltipText += `\n${event.user_name}`;
                     }
                     if (!event.sleep_end_time) {
-                        tooltipText += `\n🔄 Currently sleeping`;
+                        tooltipText += '\n🔄 Currently sleeping';
                     }
                     tooltip.textContent = tooltipText;
                     tooltip.style.whiteSpace = 'pre-line';

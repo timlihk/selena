@@ -629,7 +629,7 @@ const Event = {
       }
 
       if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
+        query += ` WHERE ${  conditions.join(' AND ')}`;
       }
 
       query += ' ORDER BY timestamp DESC';
@@ -974,14 +974,14 @@ const BabyProfile = {
           [name, dateOfBirth, existingProfile.rows[0].id]
         );
         return result.rows[0];
-      } else {
+      }
         // Create new profile
         const result = await pool.query(
           'INSERT INTO baby_profile (name, date_of_birth) VALUES ($1, $2) RETURNING *',
           [name, dateOfBirth]
         );
         return result.rows[0];
-      }
+
     } catch (error) {
       console.error('Error saving baby profile:', error);
       throw error;

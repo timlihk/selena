@@ -33,4 +33,4 @@ testCases.forEach(test => {
 console.log('\n📋 Summary:');
 const requiresConfirmation = testCases.filter(test => verifySleepDuration(test.duration).requiresConfirmation);
 console.log(`   • ${requiresConfirmation.length}/${testCases.length} test cases require confirmation`);
-console.log(`   • Thresholds: <10 minutes or >300 minutes (5 hours)`);
+console.log('   • Thresholds: <10 minutes or >300 minutes (5 hours)');

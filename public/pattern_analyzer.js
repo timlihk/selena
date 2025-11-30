@@ -12,7 +12,7 @@ class PatternAnalyzer {
     }
 
     getDaysOfData() {
-        if (this.events.length === 0) return 0;
+        if (this.events.length === 0) {return 0;}
         const timestamps = this.events.map(e => new Date(e.timestamp).getTime());
         const oldest = Math.min(...timestamps);
         const newest = Math.max(...timestamps);
@@ -67,7 +67,7 @@ class PatternAnalyzer {
         const byHour = {};
         correlations.forEach(c => {
             const hour = c.feedTime;
-            if (!byHour[hour]) byHour[hour] = [];
+            if (!byHour[hour]) {byHour[hour] = [];}
             byHour[hour].push(c.sleepDuration);
         });
 
@@ -106,7 +106,7 @@ class PatternAnalyzer {
                     title: 'Optimal Feeding Window Found',
                     description: `Based on ${correlations.length} feeding sessions, feeding around ${bestHour}:00 leads to ~${Math.round(improvement)} minutes more sleep than average.`,
                     recommendation: `Try feeding around ${bestHour}:00 for better sleep sessions.`,
-                    confidence: confidence,
+                    confidence,
                     dataPoints: bestDurations.length,
                     stats: {
                         hour: bestHour,
@@ -147,7 +147,7 @@ class PatternAnalyzer {
         const rawSleepEvents = this.events.filter(e => e.type === 'sleep')
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        if (rawSleepEvents.length < MIN_DATA_POINTS) return insights;
+        if (rawSleepEvents.length < MIN_DATA_POINTS) {return insights;}
 
         // Filter for valid sleep events with complete data
         const sleepEvents = rawSleepEvents.filter(event =>
@@ -174,13 +174,13 @@ class PatternAnalyzer {
             }
         }
 
-        if (wakeData.length < MIN_DATA_POINTS) return insights;
+        if (wakeData.length < MIN_DATA_POINTS) {return insights;}
 
         // Group by 30-minute windows
         const byWindow = {};
         wakeData.forEach(w => {
             const windowKey = Math.floor(w.wakeWindow / WINDOW_SIZE_HOURS) * WINDOW_SIZE_HOURS;
-            if (!byWindow[windowKey]) byWindow[windowKey] = [];
+            if (!byWindow[windowKey]) {byWindow[windowKey] = [];}
             byWindow[windowKey].push(w.followingSleepDuration);
         });
 
@@ -220,10 +220,10 @@ class PatternAnalyzer {
                     title: 'Ideal Wake Window Found',
                     description: `Based on ${wakeData.length} sleep transitions, ~${windowMinutes}-minute wake windows lead to ${Math.round(improvement)} minutes more sleep than average.`,
                     recommendation: `Try keeping baby awake for ~${windowMinutes} minutes between naps.`,
-                    confidence: confidence,
+                    confidence,
                     dataPoints: bestWindowData.length,
                     stats: {
-                        windowMinutes: windowMinutes,
+                        windowMinutes,
                         sampleCount: bestWindowData.length,
                         averageSleepMinutes: Math.round(bestAvgSleep),
                         overallAverageMinutes: Math.round(avgAllSleep),

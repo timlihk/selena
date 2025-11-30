@@ -2,7 +2,7 @@
 
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway";
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway';
 const pool = new Pool({ connectionString: DATABASE_URL });
 
 async function fixAllSleepIssues() {
@@ -51,7 +51,7 @@ async function fixAllSleepIssues() {
         const end = new Date(start.getTime() + 12 * 60 * 60000); // 12 hours
         newEndTime = end.toISOString();
         newDuration = 720; // 12 hours
-        console.log(`      No next session found, setting 12-hour duration (720 minutes)`);
+        console.log('      No next session found, setting 12-hour duration (720 minutes)');
       }
 
       // Update the session
@@ -112,7 +112,7 @@ async function fixAllSleepIssues() {
         WHERE id = $3
       `, [newStartTime, newEndTime.toISOString(), session.id]);
 
-      console.log(`      ✅ Fixed\n`);
+      console.log('      ✅ Fixed\n');
     }
 
     // 3. Fix overlapping sessions between users
@@ -181,7 +181,7 @@ async function fixAllSleepIssues() {
         WHERE id = $3
       `, [newStartTime, newEndTime.toISOString(), sessionToFix.id]);
 
-      console.log(`      ✅ Fixed\n`);
+      console.log('      ✅ Fixed\n');
     }
 
     await client.query('COMMIT');
@@ -233,7 +233,7 @@ async function fixAllSleepIssues() {
         AND amount > 720
     `);
 
-    console.log(`📊 Remaining issues after fixes:`);
+    console.log('📊 Remaining issues after fixes:');
     console.log(`   • Overlapping sessions (same user): ${remainingOverlaps.rows[0].count}`);
     console.log(`   • Overlapping sessions (between users): ${remainingBetweenOverlaps.rows[0].count}`);
     console.log(`   • Unrealistic durations (>12h): ${remainingLongSessions.rows[0].count}`);

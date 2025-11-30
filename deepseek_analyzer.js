@@ -33,7 +33,7 @@ class DeepSeekEnhancedAnalyzer {
 
     // Compute days from any event array (for full vs lookback comparison)
     computeDays(events) {
-        if (!events || events.length === 0) return 0;
+        if (!events || events.length === 0) {return 0;}
         const timestamps = events.map(e => new Date(e.timestamp).getTime());
         const oldest = Math.min(...timestamps);
         const newest = Math.max(...timestamps);
@@ -133,13 +133,13 @@ class DeepSeekEnhancedAnalyzer {
 
         sleepEvents.forEach(event => {
             const hour = new Date(event.timestamp).getHours();
-            if (!byHour[hour]) byHour[hour] = [];
+            if (!byHour[hour]) {byHour[hour] = [];}
             byHour[hour].push(event.amount);
         });
 
         return {
             totalSleepEvents: sleepEvents.length,
-            byHour: byHour,
+            byHour,
             avgSleepDuration: sleepEvents.reduce((sum, e) => sum + e.amount, 0) / sleepEvents.length || 0
         };
     }
@@ -150,13 +150,13 @@ class DeepSeekEnhancedAnalyzer {
 
         milkEvents.forEach(event => {
             const hour = new Date(event.timestamp).getHours();
-            if (!byHour[hour]) byHour[hour] = [];
+            if (!byHour[hour]) {byHour[hour] = [];}
             byHour[hour].push(event.amount);
         });
 
         return {
             totalFeeds: milkEvents.length,
-            byHour: byHour,
+            byHour,
             avgAmount: milkEvents.reduce((sum, e) => sum + e.amount, 0) / milkEvents.length || 0
         };
     }
@@ -168,7 +168,7 @@ class DeepSeekEnhancedAnalyzer {
 
         diaperEvents.forEach(event => {
             const hour = new Date(event.timestamp).getHours();
-            if (!byHour[hour]) byHour[hour] = [];
+            if (!byHour[hour]) {byHour[hour] = [];}
             byHour[hour].push(event.subtype || 'pee');
 
             const subtype = event.subtype || 'pee';
@@ -177,8 +177,8 @@ class DeepSeekEnhancedAnalyzer {
 
         return {
             totalDiapers: diaperEvents.length,
-            byHour: byHour,
-            byType: byType
+            byHour,
+            byType
         };
     }
 
@@ -207,7 +207,7 @@ class DeepSeekEnhancedAnalyzer {
         const olderEvents = this.events.filter(e => new Date(e.timestamp).getTime() < cutoff);
 
         const summarize = (evts) => {
-            if (!evts || evts.length === 0) return null;
+            if (!evts || evts.length === 0) {return null;}
             const total = evts.length;
             const byType = evts.reduce((acc, e) => {
                 acc[e.type] = (acc[e.type] || 0) + 1;
@@ -228,14 +228,14 @@ class DeepSeekEnhancedAnalyzer {
 
     averageAmountFor(events, type) {
         const filtered = events.filter(e => e.type === type && Number.isFinite(e.amount));
-        if (!filtered.length) return 0;
+        if (!filtered.length) {return 0;}
         return Math.round(filtered.reduce((sum, e) => sum + e.amount, 0) / filtered.length);
     }
 
     groupByHour(correlations) {
         const byHour = {};
         correlations.forEach(c => {
-            if (!byHour[c.feedTime]) byHour[c.feedTime] = [];
+            if (!byHour[c.feedTime]) {byHour[c.feedTime] = [];}
             byHour[c.feedTime].push(c.sleepDuration);
         });
         return byHour;
@@ -246,7 +246,7 @@ class DeepSeekEnhancedAnalyzer {
         const WINDOW_SIZE_HOURS = 0.5;
         wakeData.forEach(w => {
             const windowKey = Math.floor(w.wakeWindow / WINDOW_SIZE_HOURS) * WINDOW_SIZE_HOURS;
-            if (!byWindow[windowKey]) byWindow[windowKey] = [];
+            if (!byWindow[windowKey]) {byWindow[windowKey] = [];}
             byWindow[windowKey].push(w.followingSleepDuration);
         });
         return byWindow;
@@ -254,7 +254,7 @@ class DeepSeekEnhancedAnalyzer {
 
     // Sanitize user input to prevent prompt injection
     sanitizePromptInput(input, maxLength = 200) {
-        if (!input || typeof input !== 'string') return '';
+        if (!input || typeof input !== 'string') {return '';}
         return input
             .replace(/[<>{}[\]]/g, '')      // Remove potential markup/code chars
             .replace(/[\r\n]+/g, ' ')        // Remove newlines
@@ -301,7 +301,7 @@ class DeepSeekEnhancedAnalyzer {
                 feedsPerDayMin: 5, feedsPerDayMax: 6,
                 feedAmountMin: 180, feedAmountMax: 210
             };
-        } else {
+        }
             // 6+ months
             return {
                 sleepHoursMin: 12, sleepHoursMax: 14,
@@ -309,7 +309,7 @@ class DeepSeekEnhancedAnalyzer {
                 feedsPerDayMin: 4, feedsPerDayMax: 6,
                 feedAmountMin: 180, feedAmountMax: 240
             };
-        }
+
     }
 
     // Calculate 7-day trends comparing recent week to prior week
@@ -333,12 +333,12 @@ class DeepSeekEnhancedAnalyzer {
 
         const calcAvg = (events, type, field = 'amount') => {
             const filtered = events.filter(e => e.type === type && Number.isFinite(e[field]));
-            if (!filtered.length) return null;
+            if (!filtered.length) {return null;}
             return filtered.reduce((sum, e) => sum + e[field], 0) / filtered.length;
         };
 
         const formatTrend = (recent, prior, unit) => {
-            if (recent === null || prior === null || prior === 0) return null;
+            if (recent === null || prior === null || prior === 0) {return null;}
             const pctChange = ((recent - prior) / prior) * 100;
             const direction = pctChange > 5 ? '↑' : pctChange < -5 ? '↓' : '→';
             return `${direction} ${Math.abs(pctChange).toFixed(0)}% (${Math.round(prior)}${unit} → ${Math.round(recent)}${unit})`;
@@ -362,7 +362,7 @@ class DeepSeekEnhancedAnalyzer {
             .map(v => new Date(v).getTime())
             .filter(t => !Number.isNaN(t))
             .sort((a, b) => a - b);
-        if (!values.length) return null;
+        if (!values.length) {return null;}
         const mid = Math.floor(values.length / 2);
         const ts = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
         return new Date(ts).toISOString();
@@ -374,14 +374,14 @@ class DeepSeekEnhancedAnalyzer {
             .filter(e => e.type === type)
             .forEach(e => {
                 const ts = new Date(e.timestamp);
-                if (Number.isNaN(ts.getTime())) return;
+                if (Number.isNaN(ts.getTime())) {return;}
                 const day = ts.toISOString().split('T')[0];
                 if (!firstPerDay[day] || ts < firstPerDay[day]) {
                     firstPerDay[day] = ts;
                 }
             });
         const times = Object.values(firstPerDay).map(d => d.getTime()).sort((a, b) => a - b);
-        if (!times.length) return null;
+        if (!times.length) {return null;}
         const mid = Math.floor(times.length / 2);
         const ts = times.length % 2 === 0 ? (times[mid - 1] + times[mid]) / 2 : times[mid];
         return new Date(ts).toISOString();
@@ -391,16 +391,16 @@ class DeepSeekEnhancedAnalyzer {
         const sorted = this.events
             .filter(e => e.type === type)
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        if (sorted.length < 2) return null;
+        if (sorted.length < 2) {return null;}
         const intervals = [];
         for (let i = 1; i < sorted.length; i++) {
             const prev = new Date(sorted[i - 1].timestamp);
             const curr = new Date(sorted[i].timestamp);
-            if (Number.isNaN(prev.getTime()) || Number.isNaN(curr.getTime())) continue;
+            if (Number.isNaN(prev.getTime()) || Number.isNaN(curr.getTime())) {continue;}
             intervals.push((curr - prev) / (1000 * 60));
         }
         intervals.sort((a, b) => a - b);
-        if (!intervals.length) return null;
+        if (!intervals.length) {return null;}
         const mid = Math.floor(intervals.length / 2);
         return intervals.length % 2 === 0 ? (intervals[mid - 1] + intervals[mid]) / 2 : intervals[mid];
     }
@@ -409,7 +409,7 @@ class DeepSeekEnhancedAnalyzer {
         const amounts = this.events
             .filter(e => e.type === type && Number.isFinite(e.amount))
             .map(e => e.amount);
-        if (!amounts.length) return null;
+        if (!amounts.length) {return null;}
         return mode === 'min' ? Math.min(...amounts) : Math.max(...amounts);
     }
 
@@ -417,14 +417,14 @@ class DeepSeekEnhancedAnalyzer {
         const sleeps = this.events
             .filter(e => e.type === 'sleep' && e.sleep_start_time && e.sleep_end_time)
             .sort((a, b) => new Date(a.sleep_start_time) - new Date(b.sleep_start_time));
-        if (sleeps.length < 2) return null;
+        if (sleeps.length < 2) {return null;}
         let longest = 0;
         for (let i = 1; i < sleeps.length; i++) {
             const prevEnd = new Date(sleeps[i - 1].sleep_end_time);
             const currStart = new Date(sleeps[i].sleep_start_time);
-            if (Number.isNaN(prevEnd.getTime()) || Number.isNaN(currStart.getTime())) continue;
+            if (Number.isNaN(prevEnd.getTime()) || Number.isNaN(currStart.getTime())) {continue;}
             const gap = (currStart - prevEnd) / (1000 * 60);
-            if (gap > longest) longest = gap;
+            if (gap > longest) {longest = gap;}
         }
         return Math.round(longest);
     }
@@ -457,7 +457,7 @@ class DeepSeekEnhancedAnalyzer {
         let daysUsed = 0;
         let totalMinutes = 0;
         Object.entries(totalsByDay).forEach(([key, minutes]) => {
-            if (key === todayKey) return; // skip incomplete current day
+            if (key === todayKey) {return;} // skip incomplete current day
             daysUsed += 1;
             totalMinutes += minutes;
         });
@@ -494,7 +494,7 @@ class DeepSeekEnhancedAnalyzer {
                     recommendation: 'Continue tracking daily for at least two weeks.'
                 }],
                 error: null,
-                dataDays: dataDays,
+                dataDays,
                 insufficientData: true
             };
         }
@@ -625,10 +625,10 @@ Limit: max 3 insights, max 2 alerts.`;
     }
 
     formatMeasurementCompact(m) {
-        if (!m) return 'no measurements';
+        if (!m) {return 'no measurements';}
         const parts = [];
-        if (m.weight_kg) parts.push(`${m.weight_kg}kg`);
-        if (m.height_cm) parts.push(`${m.height_cm}cm`);
+        if (m.weight_kg) {parts.push(`${m.weight_kg}kg`);}
+        if (m.height_cm) {parts.push(`${m.height_cm}cm`);}
         return parts.join('/') || 'no measurements';
     }
 
@@ -725,11 +725,11 @@ Limit: max 3 insights, max 2 alerts.`;
     }
 
     formatMeasurement(measurement) {
-        if (!measurement) return 'none';
+        if (!measurement) {return 'none';}
         const parts = [];
-        if (measurement.weight_kg) parts.push(`${measurement.weight_kg} kg`);
-        if (measurement.height_cm) parts.push(`${measurement.height_cm} cm`);
-        if (measurement.head_circumference_cm) parts.push(`head ${measurement.head_circumference_cm} cm`);
+        if (measurement.weight_kg) {parts.push(`${measurement.weight_kg} kg`);}
+        if (measurement.height_cm) {parts.push(`${measurement.height_cm} cm`);}
+        if (measurement.head_circumference_cm) {parts.push(`head ${measurement.head_circumference_cm} cm`);}
         const dateLabel = measurement.measurement_date ? new Date(measurement.measurement_date).toISOString().split('T')[0] : 'unknown date';
         return `${parts.join(', ') || 'no values'} (on ${dateLabel})`;
     }
@@ -746,7 +746,7 @@ Limit: max 3 insights, max 2 alerts.`;
             const parsed = JSON.parse(cleanResponse);
             return {
                 ...parsed,
-                patterns: patterns,
+                patterns,
                 dataDays: patterns.overallStats.dataDays,
                 source: 'deepseek_ai'
             };
@@ -762,7 +762,7 @@ Limit: max 3 insights, max 2 alerts.`;
                     recommendation: 'Review the detailed analysis above'
                 }],
                 summary: 'AI analysis completed successfully',
-                patterns: patterns,
+                patterns,
                 dataDays: patterns.overallStats.dataDays,
                 source: 'deepseek_ai'
             };
@@ -810,7 +810,7 @@ Limit: max 3 insights, max 2 alerts.`;
     }
 
     escapeText(text) {
-        if (text === null || text === undefined) return '';
+        if (text === null || text === undefined) {return '';}
         return String(text).replace(/[<>]/g, '').trim();
     }
 
@@ -867,7 +867,7 @@ class PatternDetector {
                 minDiapersPerDay: 5,
                 minFeedsPerDay: 6
             };
-        } else {
+        }
             return {
                 maxFeedingGapHours: 6,
                 minSleepHoursPerDay: 12,
@@ -875,7 +875,7 @@ class PatternDetector {
                 minDiapersPerDay: 4,
                 minFeedsPerDay: 5
             };
-        }
+
     }
 
     // Detect all anomalies - returns array of alerts
@@ -885,23 +885,23 @@ class PatternDetector {
 
         // Check feeding gaps
         const feedingGap = this.detectFeedingGaps(thresholds.maxFeedingGapHours);
-        if (feedingGap) alerts.push(feedingGap);
+        if (feedingGap) {alerts.push(feedingGap);}
 
         // Check daily sleep
         const sleepAlert = this.detectLowSleep(thresholds.minSleepHoursPerDay);
-        if (sleepAlert) alerts.push(sleepAlert);
+        if (sleepAlert) {alerts.push(sleepAlert);}
 
         // Check diaper output
         const diaperAlert = this.detectLowDiapers(thresholds.minDiapersPerDay);
-        if (diaperAlert) alerts.push(diaperAlert);
+        if (diaperAlert) {alerts.push(diaperAlert);}
 
         // Check feeding frequency
         const feedingAlert = this.detectLowFeedings(thresholds.minFeedsPerDay);
-        if (feedingAlert) alerts.push(feedingAlert);
+        if (feedingAlert) {alerts.push(feedingAlert);}
 
         // Check for long wake windows
         const wakeAlert = this.detectLongWakeWindow();
-        if (wakeAlert) alerts.push(wakeAlert);
+        if (wakeAlert) {alerts.push(wakeAlert);}
 
         return alerts;
     }
@@ -912,7 +912,7 @@ class PatternDetector {
             .filter(e => e.type === 'milk')
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        if (feedEvents.length < 2) return null;
+        if (feedEvents.length < 2) {return null;}
 
         // Check gap from last feed to now
         const lastFeed = feedEvents[feedEvents.length - 1];
@@ -1020,8 +1020,8 @@ class PatternDetector {
                 severity: count < minCount - 2 ? 'high' : 'medium',
                 title: 'Low diaper output',
                 message: `Only ${count} diapers in last 24 hours (minimum: ${minCount})`,
-                count: count,
-                wetCount: wetCount,
+                count,
+                wetCount,
                 priority: count < 3 ? 1 : 2,
                 actionable: true
             };
@@ -1034,7 +1034,7 @@ class PatternDetector {
                 severity: wetCount < 2 ? 'high' : 'medium',
                 title: 'Few wet diapers',
                 message: `Only ${wetCount} wet diapers in last 24 hours - monitor hydration`,
-                wetCount: wetCount,
+                wetCount,
                 priority: wetCount < 2 ? 1 : 2,
                 actionable: true
             };
@@ -1059,8 +1059,8 @@ class PatternDetector {
                 severity: count < minCount - 2 ? 'high' : 'medium',
                 title: 'Few feedings today',
                 message: `Only ${count} feeds in last 24 hours (minimum: ${minCount})`,
-                count: count,
-                totalMl: totalMl,
+                count,
+                totalMl,
                 priority: 2,
                 actionable: true
             };
@@ -1081,7 +1081,7 @@ class PatternDetector {
             .filter(e => e.type === 'sleep' && e.sleep_end_time)
             .sort((a, b) => new Date(a.sleep_end_time) - new Date(b.sleep_end_time));
 
-        if (sleepEvents.length === 0) return null;
+        if (sleepEvents.length === 0) {return null;}
 
         // Check time since last wake
         const lastSleep = sleepEvents[sleepEvents.length - 1];

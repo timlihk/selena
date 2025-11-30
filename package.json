@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node tests/run-tests.js"
+    "test": "node tests/run-tests.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "globals": "^15.9.0"
   },
   "dependencies": {
     "axios": "^1.6.0",

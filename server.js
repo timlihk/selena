@@ -101,7 +101,7 @@ function verifySleepDuration(duration) {
     return {
       requiresConfirmation: true,
       message: `Sleep duration is only ${duration} minutes. This is very short for a sleep session. Are you sure this is correct?`,
-      duration: duration,
+      duration,
       issue: 'too_short'
     };
   }
@@ -110,7 +110,7 @@ function verifySleepDuration(duration) {
     return {
       requiresConfirmation: true,
       message: `Sleep duration is ${Math.round(duration/60*10)/10} hours. This is quite long for a sleep session. Are you sure this is correct?`,
-      duration: duration,
+      duration,
       issue: 'too_long'
     };
   }
@@ -118,7 +118,7 @@ function verifySleepDuration(duration) {
   return {
     requiresConfirmation: false,
     message: null,
-    duration: duration,
+    duration,
     issue: null
   };
 }
@@ -166,7 +166,7 @@ const INSIGHTS_CACHE_TTL_MS = 23 * 60 * 60 * 1000; // refresh roughly once a day
 const INSIGHTS_REFRESH_HOUR = 3; // 03:00 server local time
 const INSIGHTS_INVALIDATION_THRESHOLD = 5; // Invalidate cache after N new events
 const INSIGHTS_FAILURE_TTL_MS = 10 * 60 * 1000; // retry failures sooner (10 minutes)
-let insightsCache = {
+const insightsCache = {
   payload: null,
   generatedAt: null,
   refreshing: false,
@@ -186,9 +186,9 @@ function getInsightsCacheKey(goal, concerns) {
 
 // Track current event count for cache invalidation
 async function shouldInvalidateInsightsCache(cacheKey) {
-  if (!insightsCache.generatedAt) return true;
+  if (!insightsCache.generatedAt) {return true;}
   // Invalidate if goal/concerns changed
-  if (cacheKey && insightsCache.cacheKey !== cacheKey) return true;
+  if (cacheKey && insightsCache.cacheKey !== cacheKey) {return true;}
   try {
     const events = await Event.getAll();
     const newEventCount = events.length - insightsCache.eventCountAtGeneration;
@@ -294,7 +294,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
 
   insightsCache.refreshing = true;
   const apiKey = process.env.DEEPSEEK_API_KEY || null;
-  console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? apiKey.substring(0, 8) + '...' : 'none'}`);
+  console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? `${apiKey.substring(0, 8)  }...` : 'none'}`);
 
   try {
     // Parallel fetch for better performance
@@ -554,10 +554,10 @@ app.post('/api/events', async (req, res) => {
 
     // Enhanced validation using validation functions
     try {
-      if (!type) throw new Error('Event type is required');
+      if (!type) {throw new Error('Event type is required');}
       validateEventType(type);
 
-      if (!userName) throw new Error('User name is required');
+      if (!userName) {throw new Error('User name is required');}
       validateUserName(userName);
 
       if (timestamp) {
@@ -686,7 +686,7 @@ app.post('/api/events', async (req, res) => {
                 success: false,
                 error: verification.message,
                 requiresConfirmation: true,
-                verification: verification
+                verification
               };
             }
 
@@ -766,7 +766,7 @@ app.post('/api/events', async (req, res) => {
           return res.status(422).json({
             error: verification.message,
             requiresConfirmation: true,
-            verification: verification
+            verification
           });
         }
       }
@@ -1215,6 +1215,9 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Server instance - declared before startServer to avoid ESLint no-use-before-define
+let server = null;
+
 // Initialize database and start server
 async function startServer() {
   try {
@@ -1236,7 +1239,7 @@ async function startServer() {
       console.log(`🚀 Baby Tracker server running on port ${PORT}`);
       console.log(`📱 Open http://localhost:${PORT} to view the app`);
       if (!process.env.DATABASE_URL) {
-        console.log(`⚠️  Server started but DATABASE is NOT connected`);
+        console.log('⚠️  Server started but DATABASE is NOT connected');
       }
     });
 
@@ -1251,13 +1254,13 @@ async function startServer() {
       try {
         if (process.env.DATABASE_URL) {
           await initializeDatabase();
-          console.log(`🗄️  Database initialized successfully`);
+          console.log('🗄️  Database initialized successfully');
           // Refresh AI insights after DB is ready
           generateAndCacheInsights('post-db').catch((err) => {
             console.error('AI insights refresh after DB init failed:', err);
           });
         } else {
-          console.log(`⚠️  Skipping database initialization - DATABASE_URL not set`);
+          console.log('⚠️  Skipping database initialization - DATABASE_URL not set');
         }
       } catch (error) {
         console.error('❌ Failed to initialize database:', error);
@@ -1412,9 +1415,6 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
     res.status(500).json({ error: 'Failed to create confirmed sleep event' });
   }
 });
-
-// Server instance - only used when running as main module
-let server = null;
 
 if (require.main === module) {
   // Graceful shutdown handling - only register when running as main module
