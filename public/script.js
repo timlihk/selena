@@ -2048,13 +2048,15 @@ class BabyTracker {
         // Check sleep alerts
         const sleepQuality = this.calculateSleepQuality();
         if (sleepQuality) {
-            if (sleepQuality.sleepPercentage < 75) {
+            // Only warn about low daily sleep total after 8 PM when day is mostly over
+            const currentHour = new Date().getHours();
+            if (currentHour >= 20 && sleepQuality.sleepPercentage < 75) {
                 const deficit = sleepQuality.recommendedHours - parseFloat(sleepQuality.totalHours);
                 alerts.push({
                     type: 'sleep',
                     severity: 'alert',
                     icon: '😴',
-                    message: `Only ${sleepQuality.totalHours}h sleep - ${deficit.toFixed(1)}h below recommended`
+                    message: `Only ${sleepQuality.totalHours}h sleep today - ${deficit.toFixed(1)}h below recommended`
                 });
             }
             if (parseFloat(sleepQuality.longestWakeHours) > 4) {
