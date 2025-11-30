@@ -6,8 +6,7 @@ module.exports = [
       'node_modules/**',
       'coverage/**',
       'dist/**',
-      '*.min.js',
-      '*-Mangrove-Windows.*'
+      '*.min.js'
     ]
   },
   // Node.js backend files

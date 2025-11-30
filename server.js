@@ -290,6 +290,18 @@ async function getBabyAgeWeeks(defaultWeeks = 8) {
 // Track in-flight generation promise to avoid race conditions
 let insightsGenerationPromise = null;
 
+// Timeout wrapper for async operations
+const AI_INSIGHTS_TIMEOUT_MS = 60000; // 60 seconds max for entire generation
+
+function withTimeout(promise, ms, operation = 'Operation') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms)
+    )
+  ]);
+}
+
 async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
   // If already generating, wait for the same result instead of returning stale data
   if (insightsCache.refreshing && insightsGenerationPromise) {
@@ -338,14 +350,18 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
       }
     );
 
-    const insights = await analyzer.generateEnhancedInsights({
-      ageWeeks,
-      profile,
-      latestMeasurement,
-      homeTimezone: HOME_TIMEZONE,
-      goal: options.goal,
-      concerns: options.concerns
-    });
+    const insights = await withTimeout(
+      analyzer.generateEnhancedInsights({
+        ageWeeks,
+        profile,
+        latestMeasurement,
+        homeTimezone: HOME_TIMEZONE,
+        goal: options.goal,
+        concerns: options.concerns
+      }),
+      AI_INSIGHTS_TIMEOUT_MS,
+      'AI insights generation'
+    );
 
     // Run real-time pattern detection (no AI, immediate safety alerts)
     const patternDetector = new PatternDetector(events, HOME_TIMEZONE, ageWeeks);

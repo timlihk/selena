@@ -9,8 +9,5 @@ coverage/
 # Minified files
 *.min.js
 
-# Legacy/backup files
-*-Mangrove-Windows.*
-
 # Package lock
 package-lock.json

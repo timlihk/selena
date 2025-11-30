@@ -73,9 +73,12 @@ class BabyTracker {
         await this.loadConfig();
         this.setCurrentTime();
         this.bindEvents();
+        // Load events first, then run stats and timeline in parallel
         await this.loadEvents();
-        await this.updateStats();
-        await this.renderTimeline();
+        await Promise.all([
+            this.updateStats(),
+            this.renderTimeline()
+        ]);
     }
 
     async loadConfig() {
