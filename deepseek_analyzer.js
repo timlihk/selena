@@ -502,7 +502,13 @@ class DeepSeekEnhancedAnalyzer {
         if (!this.apiKey) {
             console.log('[DeepSeek] No API key configured');
             return {
-                insights: [],
+                insights: [{
+                    title: 'AI Insights Unavailable',
+                    description: 'DeepSeek API key is not configured. Please contact the administrator to enable AI-powered insights.',
+                    type: 'general',
+                    confidence: 0.0,
+                    recommendation: 'Add DEEPSEEK_API_KEY to environment variables to enable AI analysis.'
+                }],
                 error: 'DeepSeek API key not configured. Add DEEPSEEK_API_KEY to environment variables.',
                 fallback: true,
                 missingApiKey: true
@@ -530,7 +536,13 @@ class DeepSeekEnhancedAnalyzer {
                 console.error('[DeepSeek] Response data:', JSON.stringify(error.response.data).substring(0, 500));
             }
             return {
-                insights: [],
+                insights: [{
+                    title: 'AI Analysis Temporarily Unavailable',
+                    description: 'We encountered an issue connecting to the AI service. Your data is safe and the analysis will be available once the service recovers.',
+                    type: 'general',
+                    confidence: 0.0,
+                    recommendation: 'Try refreshing the page in a few minutes.'
+                }],
                 error: `AI analysis failed: ${error.message}`,
                 fallback: true,
                 apiError: true

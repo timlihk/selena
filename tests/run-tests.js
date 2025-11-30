@@ -34,7 +34,7 @@ async function testInvalidFilterReturns400() {
   await getEventsHandler(req, res);
 
   assert.strictEqual(res.statusCode, 400, 'Expected HTTP 400 for invalid filter');
-  assert.deepStrictEqual(res.jsonData, { error: 'Invalid filter format' });
+  assert.deepStrictEqual(res.jsonData, { success: false, error: 'Invalid filter format' });
 }
 
 async function testTypeFilterReturnsOnlyRequestedType() {

@@ -255,7 +255,14 @@ function isInsightsCacheStale() {
     return true;
   }
   const cacheAgeMs = Date.now() - new Date(insightsCache.generatedAt).getTime();
-  const ttl = insightsCache.payload && insightsCache.payload.success === false ? INSIGHTS_FAILURE_TTL_MS : INSIGHTS_CACHE_TTL_MS;
+  // Use shorter TTL for failures - either top-level failure OR nested AI error
+  const hasError = insightsCache.payload && (
+    insightsCache.payload.success === false ||
+    insightsCache.payload.aiEnhanced?.error ||
+    insightsCache.payload.aiEnhanced?.apiError ||
+    insightsCache.payload.aiEnhanced?.missingApiKey
+  );
+  const ttl = hasError ? INSIGHTS_FAILURE_TTL_MS : INSIGHTS_CACHE_TTL_MS;
   return cacheAgeMs > ttl;
 }
 

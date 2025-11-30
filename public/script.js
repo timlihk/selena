@@ -1840,11 +1840,19 @@ class BabyTracker {
                 }
                 const data = await response.json();
 
+                // If the response indicates an error, return immediately without retrying
+                // (error messages like auth failures, quota exceeded, etc. won't change on retry)
+                if (data.success === false) {
+                    console.log('[AI Insights] Server returned error, not retrying:', data.error);
+                    return data;
+                }
+
                 // Check if we have actual insights (could be in different paths)
                 const hasInsights = data.success &&
                     ((data.aiEnhanced?.insights?.length > 0) || (data.insights?.length > 0));
 
                 // If no insights yet and we haven't exhausted retries, wait and retry
+                // (this handles the case where AI is still generating in the background)
                 if (!hasInsights && retryCount < MAX_RETRIES) {
                     const delay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
                     console.log(`[AI Insights] No insights yet, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
