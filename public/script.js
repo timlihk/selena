@@ -1773,8 +1773,9 @@ class BabyTracker {
     }
 
     async fetchAIInsights(retryCount = 0) {
-        const MAX_RETRIES = 2;
-        const RETRY_DELAY_MS = 3000;
+        // Increased retries and delays to handle slow DeepSeek API (can take 30+ seconds)
+        const MAX_RETRIES = 5;
+        const RETRY_DELAYS = [2000, 4000, 6000, 8000, 10000]; // Progressive delays
 
         // Prevent concurrent fetches - return existing promise if in flight
         if (this._aiInsightsFetchPromise && retryCount === 0) {
@@ -1801,8 +1802,9 @@ class BabyTracker {
 
                 // If no insights yet and we haven't exhausted retries, wait and retry
                 if (!hasInsights && retryCount < MAX_RETRIES) {
-                    console.log(`[AI Insights] No insights yet, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                    const delay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    console.log(`[AI Insights] No insights yet, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                     return this.fetchAIInsights(retryCount + 1);
                 }
 
@@ -1811,7 +1813,14 @@ class BabyTracker {
                 }
                 return data;
             } catch (error) {
-                console.warn('Failed to fetch AI insights, using statistical only:', error);
+                // On error, retry with backoff if retries remain
+                if (retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    console.log(`[AI Insights] Fetch error, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES}):`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return this.fetchAIInsights(retryCount + 1);
+                }
+                console.warn('Failed to fetch AI insights after retries:', error);
                 return null;
             } finally {
                 // Clear the in-flight promise when done (only for initial call)
