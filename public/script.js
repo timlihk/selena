@@ -91,10 +91,40 @@ class BabyTracker {
             if (data.homeTimezone) {
                 this.homeTimezone = data.homeTimezone;
             }
+            // Populate user dropdown from server config
+            if (data.users && Array.isArray(data.users)) {
+                this.populateUserDropdown(data.users);
+            }
         } catch (error) {
             console.warn('Failed to load configuration, using fallback timezone', error);
             this.homeTimezone = this.homeTimezone || this.localTimezone || this.defaultHomeTimezone;
         }
+    }
+
+    // Populate the user dropdown with users from config
+    populateUserDropdown(users) {
+        const userSelect = document.getElementById('userName');
+        if (!userSelect) {return;}
+
+        // Keep the first "Select user" option
+        const placeholder = userSelect.querySelector('option[value=""]');
+        userSelect.innerHTML = '';
+        if (placeholder) {
+            userSelect.appendChild(placeholder);
+        } else {
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Select user';
+            userSelect.appendChild(defaultOption);
+        }
+
+        // Add users from config
+        users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user;
+            option.textContent = user;
+            userSelect.appendChild(option);
+        });
     }
 
     setCurrentTime(date = new Date()) {
@@ -309,8 +339,18 @@ class BabyTracker {
 
     // Load baby profile data and render the modal content
     async loadBabyProfileData(container) {
+        const LOAD_TIMEOUT_MS = 15000; // 15 second timeout
+
         try {
-            const response = await fetch('/api/baby-profile');
+            // Create abort controller for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), LOAD_TIMEOUT_MS);
+
+            const response = await fetch('/api/baby-profile', {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
             if (!response.ok) {
                 throw new Error('Failed to load baby profile');
             }
@@ -323,6 +363,10 @@ class BabyTracker {
 
             this.renderBabyProfile(container, data);
         } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Profile load timed out after 15 seconds');
+                throw new Error('Loading timed out. Please check your connection and try again.');
+            }
             console.error('Error in loadBabyProfileData:', error);
             throw error;
         }
@@ -1907,7 +1951,7 @@ class BabyTracker {
         return h > 0 ? `${h}h ${m}m` : `${m}m`;
     }
 
-    // Calculate diaper health metrics
+    // Calculate diaper health metrics (optimized single-pass)
     calculateDiaperHealth() {
         const todayEvents = this.getTodayEvents();
         const diaperEvents = todayEvents.filter(e =>
@@ -1920,70 +1964,62 @@ class BabyTracker {
 
         const now = new Date();
 
-        // Count by subtype
+        // Single pass: count subtypes, track times, and collect pee timestamps for interval calculation
         let peeCount = 0;
         let pooCount = 0;
         let bothCount = 0;
-
-        // Track last occurrence of each type
         let lastPeeTime = null;
         let lastPooTime = null;
         let lastChangeTime = null;
+        const peeTimestamps = []; // For interval calculation
 
-        diaperEvents.forEach(event => {
+        for (const event of diaperEvents) {
             const eventTime = new Date(event.timestamp);
+            lastChangeTime = eventTime;
 
             if (event.type === 'poo') {
-                // Legacy poo events count as poo
+                // Legacy poo events
                 pooCount++;
                 lastPooTime = eventTime;
-                lastChangeTime = eventTime;
             } else if (event.subtype === 'pee') {
                 peeCount++;
                 lastPeeTime = eventTime;
-                lastChangeTime = eventTime;
+                peeTimestamps.push(eventTime);
             } else if (event.subtype === 'poo') {
                 pooCount++;
                 lastPooTime = eventTime;
-                lastChangeTime = eventTime;
             } else if (event.subtype === 'both') {
                 bothCount++;
-                peeCount++; // Both counts as pee
-                pooCount++; // Both counts as poo
+                peeCount++;
+                pooCount++;
                 lastPeeTime = eventTime;
                 lastPooTime = eventTime;
-                lastChangeTime = eventTime;
+                peeTimestamps.push(eventTime);
             }
-        });
+        }
 
-        // Calculate time since last change
-        const timeSinceLastMs = lastChangeTime ? now - lastChangeTime : null;
-        const hoursSinceLast = timeSinceLastMs ? Math.floor(timeSinceLastMs / (1000 * 60 * 60)) : null;
-        const minutesSinceLast = timeSinceLastMs ? Math.floor((timeSinceLastMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
+        // Helper function to calculate hours/minutes from milliseconds
+        const calcTimeSince = (lastTime) => {
+            if (!lastTime) {return { hours: null, minutes: null };}
+            const ms = now - lastTime;
+            return {
+                hours: Math.floor(ms / (1000 * 60 * 60)),
+                minutes: Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60))
+            };
+        };
 
-        // Calculate time since last pee
-        const timeSincePeeMs = lastPeeTime ? now - lastPeeTime : null;
-        const hoursSincePee = timeSincePeeMs ? Math.floor(timeSincePeeMs / (1000 * 60 * 60)) : null;
-        const minutesSincePee = timeSincePeeMs ? Math.floor((timeSincePeeMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
+        const sinceLast = calcTimeSince(lastChangeTime);
+        const sincePee = calcTimeSince(lastPeeTime);
+        const sincePoo = calcTimeSince(lastPooTime);
 
-        // Calculate time since last poo
-        const timeSincePooMs = lastPooTime ? now - lastPooTime : null;
-        const hoursSincePoo = timeSincePooMs ? Math.floor(timeSincePooMs / (1000 * 60 * 60)) : null;
-        const minutesSincePoo = timeSincePooMs ? Math.floor((timeSincePooMs % (1000 * 60 * 60)) / (1000 * 60)) : null;
-
-        // Calculate average pee frequency
-        const peeEvents = diaperEvents.filter(e =>
-            e.subtype === 'pee' || e.subtype === 'both'
-        );
+        // Calculate average pee interval from collected timestamps
         let avgPeeInterval = null;
-        if (peeEvents.length > 1) {
-            const intervals = [];
-            for (let i = 1; i < peeEvents.length; i++) {
-                const prev = new Date(peeEvents[i - 1].timestamp);
-                const curr = new Date(peeEvents[i].timestamp);
-                intervals.push((curr - prev) / (1000 * 60 * 60));
+        if (peeTimestamps.length > 1) {
+            let totalInterval = 0;
+            for (let i = 1; i < peeTimestamps.length; i++) {
+                totalInterval += (peeTimestamps[i] - peeTimestamps[i - 1]) / (1000 * 60 * 60);
             }
-            avgPeeInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
+            avgPeeInterval = (totalInterval / (peeTimestamps.length - 1)).toFixed(1);
         }
 
         return {
@@ -1992,19 +2028,19 @@ class BabyTracker {
             pooCount,
             bothCount,
             lastChangeTime,
-            hoursSinceLast,
-            minutesSinceLast,
+            hoursSinceLast: sinceLast.hours,
+            minutesSinceLast: sinceLast.minutes,
             lastPeeTime,
-            hoursSincePee,
-            minutesSincePee,
+            hoursSincePee: sincePee.hours,
+            minutesSincePee: sincePee.minutes,
             lastPooTime,
-            hoursSincePoo,
-            minutesSincePoo,
-            avgPeeInterval: avgPeeInterval ? avgPeeInterval.toFixed(1) : null,
+            hoursSincePoo: sincePoo.hours,
+            minutesSincePoo: sincePoo.minutes,
+            avgPeeInterval,
             // Alerts
-            noPeeAlert: hoursSincePee >= 4,
-            noPooAlert: hoursSincePoo >= 24,
-            noChangeAlert: hoursSinceLast >= 3
+            noPeeAlert: sincePee.hours >= 4,
+            noPooAlert: sincePoo.hours >= 24,
+            noChangeAlert: sinceLast.hours >= 3
         };
     }
 
@@ -2152,8 +2188,8 @@ class BabyTracker {
                                  alert.severity === 'warning' ? 'alert-warning' : 'alert-info';
             return `
                 <div class="alert-item ${severityClass}">
-                    <span class="alert-icon">${alert.icon}</span>
-                    <span class="alert-message">${alert.message}</span>
+                    <span class="alert-icon">${this.escapeHtml(alert.icon)}</span>
+                    <span class="alert-message">${this.escapeHtml(alert.message)}</span>
                 </div>
             `;
         }).join('');
@@ -2221,11 +2257,19 @@ class BabyTracker {
 
     // Start inline editing for an event
     startInlineEdit(eventId) {
+        // Cancel any existing edit first to prevent memory leaks
+        if (this._currentEditEventId && this._currentEditEventId !== eventId) {
+            this.cancelInlineEdit(this._currentEditEventId);
+        }
+
         const event = this.events.find(e => e.id === eventId);
         if (!event) {return;}
 
         const eventItem = document.querySelector(`[data-event-id="${eventId}"]`);
         if (!eventItem) {return;}
+
+        // Track current edit to clean up later
+        this._currentEditEventId = eventId;
 
         const config = this.EVENT_CONFIG[event.type] || {};
 
@@ -2420,6 +2464,7 @@ class BabyTracker {
                 throw new Error(errorMessage);
             }
 
+            this._currentEditEventId = null;
             await this.loadEvents();
             await this.updateStats();
             await this.renderTimeline();
@@ -2437,7 +2482,8 @@ class BabyTracker {
     }
 
     // Cancel inline editing
-    cancelInlineEdit(eventId) {
+    cancelInlineEdit(_eventId) {
+        this._currentEditEventId = null;
         this.loadEvents();
     }
 
@@ -2550,6 +2596,16 @@ class BabyTracker {
         }
     }
 
+    // Escape a field for CSV (RFC 4180 compliant)
+    escapeCSVField(field) {
+        const str = String(field ?? '');
+        // If field contains quotes, commas, or newlines, wrap in quotes and escape internal quotes
+        if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+            return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+    }
+
     // Export to CSV
     exportToCSV() {
         if (this.events.length === 0) {
@@ -2570,10 +2626,10 @@ class BabyTracker {
         });
 
         const csvContent = [headers, ...csvData]
-            .map(row => row.map(field => `"${field}"`).join(','))
+            .map(row => row.map(field => this.escapeCSVField(field)).join(','))
             .join('\n');
 
-        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2582,17 +2638,29 @@ class BabyTracker {
         URL.revokeObjectURL(url);
     }
 
-    // Export to PDF (simple implementation)
+    // Export to PDF using iframe (more reliable than window.open)
     exportToPDF() {
         if (this.events.length === 0) {
             this.showInfo('No events to export');
             return;
         }
 
-        // Simple PDF generation using window.print() for now
-        // In a real implementation, you might use a library like jsPDF
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
+        // Build HTML content with XSS protection
+        const eventsHtml = this.events.map(event => {
+            const date = new Date(event.timestamp);
+            return `
+                <tr>
+                    <td>${this.escapeHtml(event.type)}</td>
+                    <td>${event.amount || ''}</td>
+                    <td>${this.escapeHtml(event.user_name)}</td>
+                    <td>${this.escapeHtml(date.toLocaleDateString())}</td>
+                    <td>${this.escapeHtml(date.toLocaleTimeString())}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const htmlContent = `
+            <!DOCTYPE html>
             <html>
                 <head>
                     <title>Baby Events Report</title>
@@ -2602,11 +2670,15 @@ class BabyTracker {
                         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
                         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
                         th { background-color: #f2f2f2; }
+                        @media print {
+                            body { margin: 0; }
+                            button { display: none; }
+                        }
                     </style>
                 </head>
                 <body>
                     <h1>Baby Events Report</h1>
-                    <p>Generated on: ${new Date().toLocaleString()}</p>
+                    <p>Generated on: ${this.escapeHtml(new Date().toLocaleString())}</p>
                     <table>
                         <thead>
                             <tr>
@@ -2618,25 +2690,45 @@ class BabyTracker {
                             </tr>
                         </thead>
                         <tbody>
-                            ${this.events.map(event => {
-                                const date = new Date(event.timestamp);
-                                return `
-                                    <tr>
-                                        <td>${event.type}</td>
-                                        <td>${event.amount || ''}</td>
-                                        <td>${event.user_name}</td>
-                                        <td>${date.toLocaleDateString()}</td>
-                                        <td>${date.toLocaleTimeString()}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
+                            ${eventsHtml}
                         </tbody>
                     </table>
                 </body>
             </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
+        `;
+
+        // Try window.open first, fallback to iframe if blocked
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+        } else {
+            // Popup blocked - use iframe fallback
+            this.showInfo('Opening print preview...');
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            const iframeDoc = iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(htmlContent);
+            iframeDoc.close();
+
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+
+            // Clean up iframe after print dialog closes
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+        }
     }
 
     updateThemeIcon(button) {

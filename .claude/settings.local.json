@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(DATABASE_URL=\"postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway\" node -e:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway\" node:*)",
+      "Bash(git revert:*)",
+      "Bash(git fetch:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node -c:*)",
+      "Bash(find:*)",
+      "Bash(node:*)",
+      "Bash(npm test:*)",
+      "Bash(railway logs:*)",
+      "Bash(command -v:*)",
+      "Bash(npm config:*)",
+      "Bash(echo:*)",
+      "Bash(sudo rm:*)",
+      "Bash(npm install)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run lint:fix:*)",
+      "Bash(timeout 5 node:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

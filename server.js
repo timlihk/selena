@@ -7,27 +7,49 @@ const { initializeDatabase, Event, BabyProfile, withTransaction } = require('./d
 const { DeepSeekEnhancedAnalyzer, PatternDetector } = require('./deepseek_analyzer');
 const axios = require('axios');
 
-// Input validation constants
+// Environment-aware logging - suppress verbose logs in production
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const logger = {
+  log: (...args) => { if (!IS_PRODUCTION) {console.log(...args);} },
+  warn: (...args) => console.warn(...args), // Always show warnings
+  error: (...args) => console.error(...args), // Always show errors
+  info: (...args) => { if (!IS_PRODUCTION) {console.log(...args);} }
+};
+
+// Input validation constants - centralized for consistency
+const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
+const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
+const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
+
 // Enhanced validation functions
 function validateEventType(type) {
-  const ALLOWED_EVENT_TYPES = ['milk', 'poo', 'diaper', 'bath', 'sleep'];
   if (!ALLOWED_EVENT_TYPES.includes(type)) {
     throw new Error(`Invalid event type: ${type}. Must be one of: ${ALLOWED_EVENT_TYPES.join(', ')}`);
   }
 }
 
 function validateUserName(userName) {
-  const ALLOWED_USERS = ['Charie', 'Angie', 'Tim', 'Mengyu'];
   if (!ALLOWED_USERS.includes(userName)) {
     throw new Error(`Invalid user: ${userName}. Must be one of: ${ALLOWED_USERS.join(', ')}`);
   }
 }
 
 function validateDiaperSubtype(subtype) {
-  const ALLOWED_DIAPER_SUBTYPES = ['pee', 'poo', 'both'];
   if (subtype && !ALLOWED_DIAPER_SUBTYPES.includes(subtype)) {
     throw new Error(`Invalid diaper subtype: ${subtype}. Must be one of: ${ALLOWED_DIAPER_SUBTYPES.join(', ')}`);
   }
+}
+
+// Standardized API error response helper
+function apiError(res, status, message, details = null) {
+  const response = {
+    success: false,
+    error: message
+  };
+  if (details) {
+    response.details = details;
+  }
+  return res.status(status).json(response);
 }
 
 function validateMilkAmount(amount) {
@@ -281,7 +303,7 @@ async function getBabyAgeWeeks(defaultWeeks = 8) {
       ageWeeks = Math.floor(diffDays / 7);
     }
   } catch (profileError) {
-    console.log('Could not get baby profile for age calculation, using default:', profileError.message);
+    logger.log('Could not get baby profile for age calculation, using default:', profileError.message);
   }
 
   return ageWeeks;
@@ -305,7 +327,7 @@ function withTimeout(promise, ms, operation = 'Operation') {
 async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
   // If already generating, wait for the same result instead of returning stale data
   if (insightsCache.refreshing && insightsGenerationPromise) {
-    console.log('[AI Insights] Generation in progress, waiting for result...');
+    logger.log('[AI Insights] Generation in progress, waiting for result...');
     return insightsGenerationPromise;
   }
 
@@ -314,7 +336,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
   // Create a promise that other callers can wait on
   insightsGenerationPromise = (async () => {
   const apiKey = process.env.DEEPSEEK_API_KEY || null;
-  console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? `${apiKey.substring(0, 8)  }...` : 'none'}`);
+  logger.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? `${apiKey.substring(0, 8)  }...` : 'none'}`);
 
   try {
     // Parallel fetch for better performance
@@ -329,13 +351,13 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
           ]);
           return { profile, latestMeasurement };
         } catch (profileErr) {
-          console.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
+          logger.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
           return { profile: null, latestMeasurement: null };
         }
       })()
     ]);
     const { profile, latestMeasurement } = profileData;
-    console.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
+    logger.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
     const analyzer = new DeepSeekEnhancedAnalyzer(
       events,
       HOME_TIMEZONE,
@@ -366,7 +388,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
     // Run real-time pattern detection (no AI, immediate safety alerts)
     const patternDetector = new PatternDetector(events, HOME_TIMEZONE, ageWeeks);
     const realtimeAlerts = patternDetector.detectAnomalies();
-    console.log(`[AI Insights] Real-time alerts detected: ${realtimeAlerts.length}`);
+    logger.log(`[AI Insights] Real-time alerts detected: ${realtimeAlerts.length}`);
 
     const payload = {
       success: true,
@@ -451,18 +473,18 @@ async function getEventsHandler(req, res) {
 
     if (filter) {
       if (typeof filter !== 'string') {
-        return res.status(400).json({ error: 'Invalid filter format' });
+        return apiError(res, 400, 'Invalid filter format');
       }
 
       if (filter.length > CONSTANTS.VALIDATION.MAX_FILTER_LENGTH) {
-        return res.status(400).json({ error: 'Filter parameter is too long' });
+        return apiError(res, 400, 'Filter parameter is too long');
       }
 
       let filterData;
       try {
         filterData = JSON.parse(filter);
       } catch (parseError) {
-        return res.status(400).json({ error: 'Invalid filter format' });
+        return apiError(res, 400, 'Invalid filter format');
       }
 
       events = await Event.getFiltered(filterData);
@@ -479,7 +501,7 @@ async function getEventsHandler(req, res) {
     res.json(events);
   } catch (error) {
     console.error('Error fetching events:', error);
-    res.status(500).json({ error: 'Failed to fetch events' });
+    apiError(res, 500, 'Failed to fetch events');
   }
 }
 
@@ -503,7 +525,7 @@ app.get('/api/ai-insights', async (req, res) => {
     const shouldRegenerate = forceRefresh || !insightsCache.payload || isInsightsCacheStale() ||
       (insightsCache.payload && insightsCache.payload.success === false) || hasMissingKeyError || newDataInvalidation;
 
-    console.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, cacheKeyMatch=${insightsCache.cacheKey === cacheKey}, shouldRegenerate=${shouldRegenerate}`);
+    logger.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, cacheKeyMatch=${insightsCache.cacheKey === cacheKey}, shouldRegenerate=${shouldRegenerate}`);
 
     const payload = shouldRegenerate
       ? await generateAndCacheInsights('api', { goal, concerns })
@@ -577,7 +599,7 @@ app.get('/api/ai-insights/health', async (req, res) => {
 // Create a new event
 app.post('/api/events', async (req, res) => {
   try {
-    console.log('Received event creation request:', req.body);
+    logger.log('Received event creation request:', req.body);
     const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, diaperSubtype, timestamp } = req.body;
 
     // Enhanced validation using validation functions
@@ -850,7 +872,7 @@ app.post('/api/events', async (req, res) => {
                 [sleepAmount, sleepEnd, incompleteSleep.id]
               );
 
-              console.log(
+              logger.log(
                 `Auto-completed sleep event ${incompleteSleep.id} ` +
                 `with ${type} event at ${sleepEnd}`
               );
@@ -876,9 +898,9 @@ app.post('/api/events', async (req, res) => {
       eventSubtype = 'poo';
     }
 
-    console.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd, subtype: eventSubtype, timestamp: eventTimestamp });
+    logger.log('Creating event with data:', { type, calculatedAmount, userName, sleepStart, sleepEnd, subtype: eventSubtype, timestamp: eventTimestamp });
     const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, eventSubtype, eventTimestamp);
-    console.log('Event created successfully:', event);
+    logger.log('Event created successfully:', event);
     res.status(201).json(event);
   } catch (error) {
     console.error('❌ Error creating event:', error);
@@ -888,7 +910,7 @@ app.post('/api/events', async (req, res) => {
       NODE_ENV: process.env.NODE_ENV,
       RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT
     });
-    res.status(500).json({ error: 'Failed to create event' });
+    apiError(res, 500, 'Failed to create event');
   }
 });
 
@@ -899,7 +921,7 @@ app.get('/api/stats/today', async (req, res) => {
     res.json(stats);
   } catch (error) {
     console.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    apiError(res, 500, 'Failed to fetch stats');
   }
 });
 
@@ -909,7 +931,7 @@ app.delete('/api/events/:id', async (req, res) => {
     const { id } = req.params;
     const eventId = parseInt(id, 10);
     if (Number.isNaN(eventId)) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return apiError(res, 400, 'Invalid event id');
     }
 
     await Event.delete(eventId);
@@ -917,9 +939,9 @@ app.delete('/api/events/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting event:', error);
     if (error.message === 'Event not found') {
-      res.status(404).json({ error: 'Event not found' });
+      apiError(res, 404, 'Event not found');
     } else {
-      res.status(500).json({ error: 'Failed to delete event' });
+      apiError(res, 500, 'Failed to delete event');
     }
   }
 });
@@ -933,11 +955,11 @@ async function updateEventHandler(req, res) {
     const eventId = parseInt(id, 10);
 
     if (Number.isNaN(eventId)) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return apiError(res, 400, 'Invalid event id');
     }
 
     if (!type) {
-      return res.status(400).json({ error: 'Event type is required' });
+      return apiError(res, 400, 'Event type is required');
     }
 
     if (!CONSTANTS.ALLOWED_EVENT_TYPES.includes(type)) {
@@ -1045,9 +1067,9 @@ async function updateEventHandler(req, res) {
   } catch (error) {
     console.error('Error updating event:', error);
     if (error.message === 'Event not found') {
-      res.status(404).json({ error: 'Event not found' });
+      apiError(res, 404, 'Event not found');
     } else {
-      res.status(500).json({ error: 'Failed to update event' });
+      apiError(res, 500, 'Failed to update event');
     }
   }
 }
@@ -1203,10 +1225,13 @@ app.get('/api/baby-measurements', async (req, res) => {
   }
 });
 
-// Configuration endpoint
+// Configuration endpoint - serves centralized app config to frontend
 app.get('/api/config', (req, res) => {
   res.json({
-    homeTimezone: HOME_TIMEZONE
+    homeTimezone: HOME_TIMEZONE,
+    users: ALLOWED_USERS,
+    eventTypes: ALLOWED_EVENT_TYPES,
+    diaperSubtypes: ALLOWED_DIAPER_SUBTYPES
   });
 });
 
@@ -1305,16 +1330,16 @@ async function startServer() {
 // Endpoint to create confirmed sleep events (bypasses duration verification)
 app.post('/api/events/confirmed-sleep', async (req, res) => {
   try {
-    console.log('Received confirmed sleep event creation request:', req.body);
+    logger.log('Received confirmed sleep event creation request:', req.body);
     const { type, amount, userName, sleepSubType, sleepStartTime, sleepEndTime, timestamp } = req.body;
 
     // Basic validation (skip duration verification since it's confirmed)
     if (!type || type !== 'sleep') {
-      return res.status(400).json({ error: 'Event type must be sleep' });
+      return apiError(res, 400, 'Event type must be sleep');
     }
 
     if (!userName) {
-      return res.status(400).json({ error: 'User name is required' });
+      return apiError(res, 400, 'User name is required');
     }
 
     validateUserName(userName);
@@ -1435,12 +1460,12 @@ app.post('/api/events/confirmed-sleep', async (req, res) => {
 
     // Create the confirmed sleep event
     const event = await Event.create(type, calculatedAmount, userName, sleepStart, sleepEnd, null, timestamp);
-    console.log('Confirmed sleep event created successfully:', event);
+    logger.log('Confirmed sleep event created successfully:', event);
     res.status(201).json(event);
 
   } catch (error) {
     console.error('❌ Error creating confirmed sleep event:', error);
-    res.status(500).json({ error: 'Failed to create confirmed sleep event' });
+    apiError(res, 500, 'Failed to create confirmed sleep event');
   }
 });
 
