@@ -287,12 +287,20 @@ async function getBabyAgeWeeks(defaultWeeks = 8) {
   return ageWeeks;
 }
 
+// Track in-flight generation promise to avoid race conditions
+let insightsGenerationPromise = null;
+
 async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
-  if (insightsCache.refreshing) {
-    return insightsCache.payload;
+  // If already generating, wait for the same result instead of returning stale data
+  if (insightsCache.refreshing && insightsGenerationPromise) {
+    console.log('[AI Insights] Generation in progress, waiting for result...');
+    return insightsGenerationPromise;
   }
 
   insightsCache.refreshing = true;
+
+  // Create a promise that other callers can wait on
+  insightsGenerationPromise = (async () => {
   const apiKey = process.env.DEEPSEEK_API_KEY || null;
   console.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? `${apiKey.substring(0, 8)  }...` : 'none'}`);
 
@@ -373,7 +381,11 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
     return payload;
   } finally {
     insightsCache.refreshing = false;
+    insightsGenerationPromise = null;
   }
+  })();
+
+  return insightsGenerationPromise;
 }
 
 function getNextInsightsRefreshDelay() {
