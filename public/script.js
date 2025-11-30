@@ -294,6 +294,12 @@ class BabyTracker {
 
     // Hide baby profile modal
     hideBabyProfileModal() {
+        // Clear any pending auto-save timer to prevent memory leak
+        if (this.profileAutoSaveTimer) {
+            clearTimeout(this.profileAutoSaveTimer);
+            this.profileAutoSaveTimer = null;
+        }
+
         const modal = document.getElementById('babyProfileModal');
         if (modal) {
             modal.style.display = 'none';
@@ -625,7 +631,7 @@ class BabyTracker {
 
         if (!name || !dateOfBirth) {
             if (!silent) {
-                alert('Please enter the baby name and date of birth');
+                this.showWarning('Please enter the baby name and date of birth');
             }
             this.setProfileStatus(container, 'Name and date of birth are required', 'error');
             return;
@@ -658,7 +664,7 @@ class BabyTracker {
             console.error('Failed to save baby profile:', error);
             this.setProfileStatus(container, error.message || 'Could not save baby profile', 'error');
             if (!silent) {
-                alert(error.message || 'Could not save baby profile');
+                this.showError(error.message || 'Could not save baby profile');
             }
         } finally {
             if (!silent) {
@@ -676,7 +682,7 @@ class BabyTracker {
         const notesVal = form.querySelector('#measurementNotes')?.value?.trim();
 
         if (!measurementDate) {
-            alert('Please select a measurement date');
+            this.showWarning('Please select a measurement date');
             return;
         }
 
@@ -705,7 +711,7 @@ class BabyTracker {
             await this.loadBabyProfileData(container);
         } catch (error) {
             console.error('Failed to save baby measurement:', error);
-            alert(error.message || 'Could not save measurement');
+            this.showError(error.message || 'Could not save measurement');
         } finally {
             this.setButtonLoading(saveButton, false);
         }
@@ -724,6 +730,57 @@ class BabyTracker {
         return div.innerHTML;
     }
 
+    // Toast notification system
+    showToast(message, type = 'info', duration = 4000) {
+        const container = document.getElementById('toastContainer');
+        if (!container) {return;}
+
+        const icons = {
+            success: '✓',
+            error: '✕',
+            warning: '⚠',
+            info: 'ℹ'
+        };
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+            <span class="toast-icon">${icons[type] || icons.info}</span>
+            <span class="toast-message">${this.escapeHtml(message)}</span>
+            <button class="toast-close" aria-label="Close">&times;</button>
+        `;
+
+        const closeBtn = toast.querySelector('.toast-close');
+        const removeToast = () => {
+            toast.classList.add('toast-out');
+            setTimeout(() => toast.remove(), 300);
+        };
+
+        closeBtn.addEventListener('click', removeToast);
+
+        container.appendChild(toast);
+
+        if (duration > 0) {
+            setTimeout(removeToast, duration);
+        }
+    }
+
+    showSuccess(message) {
+        this.showToast(message, 'success');
+    }
+
+    showError(message) {
+        this.showToast(message, 'error', 6000);
+    }
+
+    showWarning(message) {
+        this.showToast(message, 'warning', 5000);
+    }
+
+    showInfo(message) {
+        this.showToast(message, 'info');
+    }
+
     async addEvent() {
         const eventType = document.getElementById('eventType').value;
         const milkAmount = document.getElementById('milkAmount').value;
@@ -734,28 +791,28 @@ class BabyTracker {
         const submitButton = document.querySelector('#eventForm button[type="submit"]');
 
         if (!userName) {
-            alert('Please select who is recording');
+            this.showWarning('Please select who is recording');
             return;
         }
 
         if (!eventType) {
-            alert('Please select an event type');
+            this.showWarning('Please select an event type');
             return;
         }
 
         if (eventType === 'milk' && (!milkAmount || isNaN(parseInt(milkAmount)) || parseInt(milkAmount) <= 0)) {
-            alert('Please enter a valid milk amount (positive number)');
+            this.showWarning('Please enter a valid milk amount (positive number)');
             return;
         }
 
         if (eventType === 'diaper' && !diaperSubtype) {
-            alert('Please select diaper type (Pee, Poo, or Both)');
+            this.showWarning('Please select diaper type (Pee, Poo, or Both)');
             return;
         }
 
         // Skip sleep events in the main form - they're handled by the sleep buttons
         if (eventType === 'sleep') {
-            alert('Please use the "Fall Asleep" or "Wake Up" buttons for sleep tracking');
+            this.showInfo('Please use the "Fall Asleep" or "Wake Up" buttons for sleep tracking');
             return;
         }
 
@@ -765,7 +822,7 @@ class BabyTracker {
         try {
             const timestampIso = this.convertInputToHomeISO(eventTime);
             if (!timestampIso) {
-                alert('Please enter a valid time');
+                this.showWarning('Please enter a valid time');
                 this.setButtonLoading(submitButton, false);
                 loadingActive = false;
                 return;
@@ -817,7 +874,7 @@ class BabyTracker {
             }
         } catch (error) {
             console.error('Error adding event:', error);
-            alert(`Failed to add event: ${  error.message}`);
+            this.showError(`Failed to add event: ${error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(submitButton, false);
@@ -833,19 +890,19 @@ class BabyTracker {
         const button = document.getElementById(buttonId);
 
         if (!userName) {
-            alert('Please select who is recording');
+            this.showWarning('Please select who is recording');
             return;
         }
 
         let eventTimestamp;
         if (this.manualTimeOverride) {
             if (!eventTime) {
-                alert('Please select event time');
+                this.showWarning('Please select event time');
                 return;
             }
             const manualIso = this.convertInputToHomeISO(eventTime);
             if (!manualIso) {
-                alert('Please enter a valid time');
+                this.showWarning('Please enter a valid time');
                 return;
             }
             eventTimestamp = manualIso;
@@ -948,7 +1005,7 @@ class BabyTracker {
             }
         } catch (error) {
             console.error('Error adding sleep event:', error);
-            alert(`Failed to add sleep event: ${  error.message}`);
+            this.showError(`Failed to add sleep event: ${error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(button, false);
@@ -1611,36 +1668,57 @@ class BabyTracker {
         const MAX_RETRIES = 2;
         const RETRY_DELAY_MS = 3000;
 
-        try {
-            if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh()) {
-                return this.cachedAIInsights;
-            }
-
-            const response = await fetch('/api/ai-insights');
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-
-            // Check if we have actual insights (could be in different paths)
-            const hasInsights = data.success &&
-                ((data.aiEnhanced?.insights?.length > 0) || (data.insights?.length > 0));
-
-            // If no insights yet and we haven't exhausted retries, wait and retry
-            if (!hasInsights && retryCount < MAX_RETRIES) {
-                console.log(`[AI Insights] No insights yet, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-                return this.fetchAIInsights(retryCount + 1);
-            }
-
-            if (data.success) {
-                this.cachedAIInsights = data;
-            }
-            return data;
-        } catch (error) {
-            console.warn('Failed to fetch AI insights, using statistical only:', error);
-            return null;
+        // Prevent concurrent fetches - return existing promise if in flight
+        if (this._aiInsightsFetchPromise && retryCount === 0) {
+            console.log('[AI Insights] Fetch already in progress, waiting...');
+            return this._aiInsightsFetchPromise;
         }
+
+        // Create the fetch promise
+        const fetchPromise = (async () => {
+            try {
+                if (this.cachedAIInsights && this.cachedAIInsights.success && this.isAIInsightsFresh()) {
+                    return this.cachedAIInsights;
+                }
+
+                const response = await fetch('/api/ai-insights');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // Check if we have actual insights (could be in different paths)
+                const hasInsights = data.success &&
+                    ((data.aiEnhanced?.insights?.length > 0) || (data.insights?.length > 0));
+
+                // If no insights yet and we haven't exhausted retries, wait and retry
+                if (!hasInsights && retryCount < MAX_RETRIES) {
+                    console.log(`[AI Insights] No insights yet, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                    return this.fetchAIInsights(retryCount + 1);
+                }
+
+                if (data.success) {
+                    this.cachedAIInsights = data;
+                }
+                return data;
+            } catch (error) {
+                console.warn('Failed to fetch AI insights, using statistical only:', error);
+                return null;
+            } finally {
+                // Clear the in-flight promise when done (only for initial call)
+                if (retryCount === 0) {
+                    this._aiInsightsFetchPromise = null;
+                }
+            }
+        })();
+
+        // Store the promise for concurrent callers (only for initial call)
+        if (retryCount === 0) {
+            this._aiInsightsFetchPromise = fetchPromise;
+        }
+
+        return fetchPromise;
     }
 
     isAIInsightsFresh() {
@@ -2004,7 +2082,7 @@ class BabyTracker {
             loadingActive = false;
         } catch (error) {
             console.error('Error removing event:', error);
-            alert(`Failed to remove event: ${  error.message}`);
+            this.showError(`Failed to remove event: ${error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(deleteButton, false);
@@ -2154,7 +2232,7 @@ class BabyTracker {
         if (selectedConfig.requiresAmount) {
             if (!amountInput.value || isNaN(amountInput.value) || parseInt(amountInput.value) <= 0) {
                 const amountLabel = newType === 'milk' ? 'milk amount' : 'sleep duration';
-                alert(`Please enter a valid ${amountLabel}`);
+                this.showWarning(`Please enter a valid ${amountLabel}`);
                 return;
             }
             newAmount = parseInt(amountInput.value);
@@ -2162,20 +2240,20 @@ class BabyTracker {
 
         if (newType === 'diaper') {
             if (!diaperSubtypeSelect || !diaperSubtypeSelect.value) {
-                alert('Please select a diaper subtype');
+                this.showWarning('Please select a diaper subtype');
                 return;
             }
             diaperSubtype = diaperSubtypeSelect.value;
         }
 
         if (!timeInput || !timeInput.value) {
-            alert('Please select a valid date and time');
+            this.showWarning('Please select a valid date and time');
             return;
         }
 
         const isoTimestamp = this.convertInputToHomeISO(timeInput.value);
         if (!isoTimestamp) {
-            alert('Please enter a valid date and time');
+            this.showWarning('Please enter a valid date and time');
             return;
         }
 
@@ -2221,7 +2299,7 @@ class BabyTracker {
             this.showButtonSuccess(saveButton, 'Saved!');
         } catch (error) {
             console.error('Error updating event:', error);
-            alert(`Failed to update event: ${  error.message}`);
+            this.showError(`Failed to update event: ${error.message}`);
         } finally {
             if (loadingActive) {
                 this.setButtonLoading(saveButton, false);
@@ -2285,7 +2363,7 @@ class BabyTracker {
             this.renderEvents();
         } catch (error) {
             console.error('Error applying date filter:', error);
-            alert('Failed to apply date filter');
+            this.showError('Failed to apply date filter');
         }
     }
 
@@ -2295,12 +2373,12 @@ class BabyTracker {
         const endDate = document.getElementById('endDate').value;
 
         if (!startDate || !endDate) {
-            alert('Please select both start and end dates');
+            this.showWarning('Please select both start and end dates');
             return;
         }
 
         if (new Date(startDate) > new Date(endDate)) {
-            alert('Start date cannot be after end date');
+            this.showWarning('Start date cannot be after end date');
             return;
         }
 
@@ -2318,7 +2396,7 @@ class BabyTracker {
             this.renderEvents();
         } catch (error) {
             console.error('Error applying custom date filter:', error);
-            alert('Failed to apply custom date filter');
+            this.showError('Failed to apply custom date filter');
         }
     }
 
@@ -2339,14 +2417,14 @@ class BabyTracker {
             }
         } catch (error) {
             console.error('Error applying type filter:', error);
-            alert('Failed to apply type filter');
+            this.showError('Failed to apply type filter');
         }
     }
 
     // Export to CSV
     exportToCSV() {
         if (this.events.length === 0) {
-            alert('No events to export');
+            this.showInfo('No events to export');
             return;
         }
 
@@ -2378,7 +2456,7 @@ class BabyTracker {
     // Export to PDF (simple implementation)
     exportToPDF() {
         if (this.events.length === 0) {
-            alert('No events to export');
+            this.showInfo('No events to export');
             return;
         }
 
