@@ -890,6 +890,40 @@ const Event = {
     }
   },
 
+  // Get ALL incomplete sleep events (any user) WITH ROW LOCKING
+  // Used to auto-complete sleep when any event is recorded
+  async getAllIncompleteSleepForUpdate(client = null) {
+    try {
+      if (useMemoryStore) {
+        const events = sortEventsDescending(
+          memoryStore.filter(item =>
+            item.type === 'sleep' &&
+            item.sleep_start_time &&
+            !item.sleep_end_time
+          )
+        );
+        return events.map(e => cloneEvent(e));
+      }
+
+      ensureDatabaseConnected();
+      const queryClient = client || pool;
+
+      const result = await queryClient.query(
+        `SELECT * FROM baby_events
+         WHERE type = 'sleep'
+           AND sleep_start_time IS NOT NULL
+           AND sleep_end_time IS NULL
+         ORDER BY timestamp DESC
+         FOR UPDATE`
+      );
+
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting all incomplete sleep events:', error);
+      throw error;
+    }
+  },
+
   // Delete an event
   async delete(id) {
     try {

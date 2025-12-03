@@ -852,16 +852,14 @@ app.post('/api/events', async (req, res) => {
         });
       }
 
-      // Check for incomplete sleep WITHIN a transaction to prevent race conditions
+      // Check for ALL incomplete sleep sessions WITHIN a transaction to prevent race conditions
+      // Any new event (milk, diaper, bath) means the baby is awake, so complete all sleep sessions
       if (type !== 'sleep') {
         try {
           await withTransaction(async (client) => {
-            const incompleteSleep = await Event.getLastIncompleteSleepForUpdate(
-              userName,
-              client
-            );
+            const incompleteSleeps = await Event.getAllIncompleteSleepForUpdate(client);
 
-            if (incompleteSleep) {
+            for (const incompleteSleep of incompleteSleeps) {
               const sleepEnd = eventTimestamp || new Date().toISOString();
               const sleepStart = incompleteSleep.sleep_start_time;
 
@@ -869,8 +867,8 @@ app.post('/api/events', async (req, res) => {
               try {
                 validateSleepTimes(sleepStart, sleepEnd);
               } catch (validationError) {
-                console.error('Auto-completion validation failed:', validationError.message);
-                return; // Skip auto-completion if validation fails
+                console.error(`Auto-completion validation failed for sleep ${incompleteSleep.id}:`, validationError.message);
+                continue; // Skip this one but continue with others
               }
 
               const duration = Math.round(
@@ -896,7 +894,7 @@ app.post('/api/events', async (req, res) => {
               );
 
               logger.log(
-                `Auto-completed sleep event ${incompleteSleep.id} ` +
+                `Auto-completed sleep event ${incompleteSleep.id} (by ${incompleteSleep.user_name}) ` +
                 `with ${type} event at ${sleepEnd}`
               );
             }
