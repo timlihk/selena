@@ -7,6 +7,7 @@ A web application to track newborn baby events including feeding, sleep, diapers
 - **Event Tracking**: Log milk feedings, sleep sessions, diaper changes, and bath times
 - **Multi-user Support**: Track events by caregiver name
 - **Sleep Management**: Track sleep start/end times with overnight session support
+- **Sleep Auto-Completion**: Active sleep sessions automatically complete when other events (milk, diaper, bath) are recorded, preventing overlaps
 - **Baby Profile**: Store baby's name, DOB, and growth measurements
 - **AI-Powered Insights**: DeepSeek AI analyzes patterns and provides personalized recommendations
 - **Adaptive Parenting Coach**: Combines statistical analysis with AI insights
@@ -15,6 +16,12 @@ A web application to track newborn baby events including feeding, sleep, diapers
 - **Timezone-aware**: Proper handling of local time across all features
 
 ## What's New
+
+### v1.3.2 (Latest)
+- **Enhanced Prompt Engineering**: Improved DeepSeek prompts with examples for consistent JSON responses
+- **Dynamic Token Allocation**: Intelligent token budgeting based on data complexity (600-1200 tokens)
+- **Cost Optimization**: Reduced token usage for small datasets without sacrificing quality
+- **Better AI Response Structure**: More reliable JSON parsing with comprehensive examples
 
 ### v1.3.1
 - **AI-Only Insights**: Adaptive Coach now exclusively uses DeepSeek AI
@@ -66,17 +73,25 @@ Create a `.env` file with:
 # Required
 DATABASE_URL=postgresql://user:password@host:port/database
 
-# Timezone
-HOME_TIMEZONE=America/Los_Angeles
+# Timezone (default: Asia/Hong_Kong)
+BABY_HOME_TIMEZONE=Asia/Hong_Kong
 
 # DeepSeek AI (optional)
-DEEPSEEK_API_KEY=sk-your-api-key
+DEEPSEEK_API_KEY=sk-your-api-key-from-platform.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
-DEEPSEEK_TEMPERATURE=0.3
-DEEPSEEK_MAX_TOKENS=2000
+DEEPSEEK_TEMPERATURE=0.1
+DEEPSEEK_MAX_TOKENS=1000  # If not set, dynamic allocation (600-1200) based on data complexity
+DEEPSEEK_LOOKBACK_DAYS=30  # How many days of data to analyze
+DEEPSEEK_REFRESH_TOKEN=your-manual-refresh-token  # For manual refresh endpoint
 
 # Server
 PORT=3000
+NODE_ENV=development  # or production
+DEFAULT_BABY_AGE_WEEKS=8  # Fallback age if no profile exists
+
+# Rate limiting (optional)
+RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
 ## Running

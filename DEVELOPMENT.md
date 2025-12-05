@@ -23,9 +23,10 @@ This guide covers:
 |-----------|------------|---------|
 | **Frontend** | HTML5, CSS3, Vanilla JavaScript | User interface and interactions |
 | **Backend** | Node.js, Express.js | API server and routing |
-| **Database** | PostgreSQL | Data persistence |
+| **Database** | PostgreSQL (with in-memory fallback) | Data persistence |
+| **AI Integration** | DeepSeek API | AI-powered pattern analysis & insights |
 | **Build Tool** | NPM | Dependency management |
-| **Deployment** | Railway.app | Cloud hosting |
+| **Deployment** | Railway.app | Cloud hosting (auto-deploy on push) |
 
 ### File Structure
 
@@ -34,18 +35,22 @@ selena/
 ├── public/                # Frontend files (served statically)
 │   ├── 📄 index.html      # Main HTML entry point
 │   ├── 🎨 styles.css      # Complete CSS with dark mode & responsive design
-│   └── ⚡ script.js       # Frontend JavaScript with timeline visualization
+│   ├── ⚡ script.js       # Frontend JavaScript with timeline visualization
+│   └── 📊 pattern_analyzer.js  # Client-side statistical analysis (z-scores)
 ├── tests/                 # Test files
 │   └── 🧪 run-tests.js    # Automated test suite
 ├── 🖥️ server.js           # Express.js server with API endpoints
-├── 🗄️ database.js         # Database configuration and models
+├── 🗄️ database.js         # Database configuration and models (BabyProfile, Event)
+├── 🤖 deepseek_analyzer.js # DeepSeek AI integration & pattern detection
+├── ⚙️ config.js           # Centralized configuration (timezone, validation, etc.)
 ├── 📦 package.json        # Dependencies and scripts
 ├── 🚄 railway.json        # Railway deployment configuration
 ├── 🔧 .env.example        # Environment variables template
 ├── 📚 README.md           # Main documentation
-├── 📋 API.md              # API documentation
+├── 📋 API.md              # API documentation (comprehensive endpoint reference)
 ├── 🚀 DEPLOYMENT.md       # Deployment guide
-└── 🛠️ DEVELOPMENT.md      # This development guide
+├── 🛠️ DEVELOPMENT.md      # This development guide
+└── 🧠 CLAUDE.md           # Claude Code context & project instructions
 ```
 
 ---
@@ -211,53 +216,23 @@ The timeline renders a horizontal 24-hour visualization (00:00 to 24:00) with:
   - Tablet (≤768px): 56px icon column, 16px right margin
   - Mobile (≤480px): 48px icon column, 12px right margin
 
-### Pattern Analyzer Architecture (`public/pattern_analyzer.js`) NEW!
+### AI & Pattern Analysis Architecture
 
-**NEW FEATURE: Adaptive Parenting Coach**
+**DUAL-LAYER ANALYSIS: Statistical + AI Insights**
 
-The PatternAnalyzer provides AI-powered pattern recognition that learns from your baby's actual behavior patterns (not generic advice).
+The system uses a two-layer approach:
+1. **Client-side Statistical Analysis** (`public/pattern_analyzer.js`) - Real-time z-score based pattern detection
+2. **Server-side DeepSeek AI Analysis** (`deepseek_analyzer.js`) - AI-powered insights with dynamic token allocation
 
-#### PatternAnalyzer Class
+#### Client-Side PatternAnalyzer (`public/pattern_analyzer.js`)
 
-```javascript
-class PatternAnalyzer {
-  constructor(events, timezone) {
-    this.events = events;
-    this.timezone = timezone;
-    this.minDataDays = 14; // Minimum threshold for reliable insights
-  }
+Provides real-time statistical analysis using z-scores for immediate pattern detection.
 
-  // Core analysis methods
-  analyzeFeedingToSleep()      // Feeding → Sleep correlation
-  analyzeWakeWindows()         // Wake window → Sleep duration
-
-  // Utility methods
-  hasSufficientData()          // Check if 14+ days of data
-  getDaysOfData()              // Calculate data range
-  generateInsights()           // Generate all actionable insights
-}
-```
-
-#### How It Works
-
-**Feeding-to-Sleep Analysis:**
-1. Identifies feeding events within 4 hours of sleep
-2. Groups by feeding hour (e.g., 19:00)
-3. Calculates average following sleep duration
-4. Suggests optimal feeding window when improvement > 15 minutes
-
-**Wake Window Analysis:**
-1. Tracks gaps between sleep sessions
-2. Analyzes in 30-minute buckets (1-6 hour range)
-3. Finds window with longest following sleep
-4. Recommends optimal wake duration
-
-**Confidence Algorithm:**
-```javascript
-confidence = Math.min(dataPoints / 10, maxConfidence)
-// More data points = higher confidence (capped at 85-90%)
-// Minimum 14 days required before showing insights
-```
+**Key Features:**
+- Z-score calculations for feeding, sleep, and diaper patterns
+- Confidence levels based on data volume and consistency
+- Minimum 14 days of data for reliable insights
+- Real-time updates as events change
 
 **Example Output:**
 ```javascript
@@ -266,57 +241,146 @@ confidence = Math.min(dataPoints / 10, maxConfidence)
   title: 'Optimal Feeding Window Found',
   description: 'Based on 12 feeding sessions, feeding around 7:00 PM leads to 23 minutes longer sleep.',
   recommendation: 'Try feeding around 7:00 PM for better sleep sessions.',
-  confidence: 0.90,  // 90% confidence
+  confidence: 0.90,  // 90% confidence (z-score based)
   dataPoints: 12
+}
+```
+
+#### Server-Side DeepSeekEnhancedAnalyzer (`deepseek_analyzer.js`)
+
+Advanced AI-powered analysis using DeepSeek API with enhanced prompt engineering.
+
+**Key Classes:**
+```javascript
+// Main AI analyzer with dynamic token allocation
+class DeepSeekEnhancedAnalyzer {
+  constructor(events, timezone, apiKey, options = {}) {
+    this.events = events;
+    this.timezone = timezone;
+    this.apiKey = apiKey;
+    this.minDataDays = 10; // Allow preview with trimmed lookback
+
+    // Dynamic token allocation based on data complexity
+    this.maxTokens = this.calculateOptimalMaxTokens(); // 600-1200 tokens
+
+    // Enhanced prompt engineering with examples
+    this.temperature = 0.1; // Low temperature for consistent medical advice
+  }
+
+  calculateOptimalMaxTokens() {
+    // Allocates tokens based on data volume and density:
+    // - Small datasets (<7 days): 600-800 tokens
+    // - Medium datasets (7-30 days): 800-1000 tokens
+    // - Large datasets (>30 days): 1000-1200 tokens
+    // - High event density (>20 events/day): +200 tokens
+  }
+
+  async generateEnhancedInsights(context = {}) {
+    // Combines statistical patterns with AI analysis
+    // Returns both statistical and AI-enhanced insights
+  }
+}
+
+// Real-time pattern detection for safety alerts
+class PatternDetector {
+  detectAnomalies() {
+    // Checks for feeding gaps, low sleep, low diapers, etc.
+    // Returns actionable alerts with severity levels
+  }
+}
+```
+
+#### How the AI Analysis Works
+
+**Enhanced Prompt Engineering:**
+1. **System Prompt**: Detailed JSON schema with examples for consistent responses
+2. **Context Building**: Includes baby profile, measurements, trends, and statistical patterns
+3. **Dynamic Token Allocation**: Intelligent budgeting based on data complexity (600-1200 tokens)
+4. **JSON Enforcement**: Strict JSON schema with comprehensive examples
+
+**Statistical Pattern Extraction:**
+```javascript
+extractStatisticalPatterns() {
+  return {
+    feedingToSleep: this.analyzeFeedingToSleep(),    // Feeding → Sleep correlation
+    wakeWindows: this.analyzeWakeWindows(),          // Wake window → Sleep duration
+    sleepDistribution: this.analyzeSleepDistribution(),
+    feedingPatterns: this.analyzeFeedingPatterns(),
+    diaperPatterns: this.analyzeDiaperPatterns(),
+    overallStats: this.getOverallStats()
+  };
+}
+```
+
+**AI Response Structure:**
+```json
+{
+  "insights": [
+    {
+      "title": "Optimal Feeding Window Found",
+      "description": "Baby sleeps 45 minutes longer when fed at 7 PM compared to other times.",
+      "type": "feeding",
+      "confidence": 0.85,
+      "recommendation": "Try consistent 7 PM feeds for better sleep",
+      "whyItMatters": "Longer sleep supports brain development and growth",
+      "priority": 1
+    }
+  ],
+  "alerts": [
+    {
+      "title": "Low Wet Diapers",
+      "severity": "medium",
+      "note": "Only 3 wet diapers in last 24 hours (recommended: 6+ for age)",
+      "priority": 2
+    }
+  ],
+  "miniPlan": {
+    "tonightBedtimeTarget": "19:30",
+    "nextWakeWindows": ["1h30m", "2h"],
+    "feedingNote": "Offer extra 20ml at bedtime feed"
+  },
+  "measureOfSuccess": "Baby sleeps through 2-hour blocks tonight with fewer night wakings"
 }
 ```
 
 #### Integration Points
 
-- **Initialization**: Created in `BabyTracker.updateAdaptiveCoach()` (line 1011)
-- **Trigger**: Called automatically after every `updateStats()` (line 589)
-- **Display**: Renders in new Adaptive Coach panel in Smart Insights
-- **Real-time**: Recalculates whenever events change
+- **Client-Side**: `BabyTracker.updateAdaptiveCoach()` uses PatternAnalyzer for real-time stats
+- **Server-Side**: `GET /api/ai-insights` calls DeepSeekEnhancedAnalyzer with caching (23-hour TTL)
+- **Manual Refresh**: `POST /api/ai-insights/refresh` with token authentication
+- **Health Checks**: `GET /api/ai-insights/health` monitors DeepSeek API status
 
-#### Extending the Analyzer
+#### Configuration & Optimization
 
-**Adding New Analysis Type:**
-
-```javascript
-// 1. Add analysis method to PatternAnalyzer class
-analyzeBedtimeConsistency() {
-  const insights = [];
-  // ... analysis logic for bedtime consistency
-  return insights;
-}
-
-// 2. Add to main generator
-class PatternAnalyzer {
-  generateInsights() {
-    const insights = [];
-    insights.push(...this.analyzeFeedingToSleep());
-    insights.push(...this.analyzeWakeWindows());
-    insights.push(...this.analyzeBedtimeConsistency()); // NEW
-    return insights;
-  }
-}
-
-// 3. Update BabyTracker to handle new insight type
-updateAdaptiveCoach() {
-  const analyzer = new PatternAnalyzer(this.events, this.homeTimezone);
-  const insights = analyzer.generateInsights();
-  // ... render logic includes new type
-}
+**Environment Variables:**
+```bash
+DEEPSEEK_API_KEY=sk-your-api-key           # Required for AI insights
+DEEPSEEK_MODEL=deepseek-chat               # Default model
+DEEPSEEK_TEMPERATURE=0.1                   # Low for consistent advice
+DEEPSEEK_MAX_TOKENS=1000                   # Optional - dynamic allocation used if not set
+DEEPSEEK_LOOKBACK_DAYS=30                  # How many days of data to analyze
+DEEPSEEK_REFRESH_TOKEN=your-token          # For manual refresh endpoint
 ```
 
-**Future Extension Ideas:**
-- Bedtime consistency → Sleep duration
-- Napping location → Sleep quality
-- Feeding amount → Sleep duration
-- Growth spurt detection (feeding increases)
-- Teething pattern recognition (sleep disruption + mood changes)
-- Seasonal/weather correlations
-- Caregiver effect on baby behavior
+**Cost Optimization:**
+- Dynamic token allocation reduces costs for small datasets
+- 23-hour caching minimizes API calls
+- Exponential backoff retry logic for transient errors
+- Fallback to statistical insights when API unavailable
+
+#### Extending the AI Analysis
+
+**Adding New Analysis Dimensions:**
+1. Extend `extractStatisticalPatterns()` with new pattern detection methods
+2. Update prompt engineering to include new data dimensions
+3. Add new insight types to the JSON schema
+4. Update frontend rendering for new insight types
+
+**Future AI Enhancements:**
+- Multi-modal analysis combining sleep, feeding, and developmental milestones
+- Predictive modeling for growth spurts and developmental leaps
+- Personalized recommendation engine based on baby's unique patterns
+- Integration with pediatric growth charts (WHO standards)
 
 ### Backend Architecture (`server.js`)
 
@@ -640,6 +704,17 @@ psql $DATABASE_URL
 # Query data
 SELECT * FROM baby_events ORDER BY timestamp DESC LIMIT 10;
 ```
+
+#### Data Maintenance Scripts
+
+The project includes several scripts for fixing data integrity issues:
+
+- **Sleep Overlap Fix**: `fix_historical_sleep_overlaps.js` - Corrects sleep sessions that overlap with other events
+- **Zero Duration Fix**: `fix_zero_duration.js` - Fixes sleep events with zero or negative duration
+- **Verification Scripts**: `check_remaining_overlaps.js`, `verify_fix.js` - Verify data integrity after fixes
+- **Bulk Apply**: `apply_fixes_now.js` - Apply multiple fixes in sequence
+
+These scripts are located in the project root and can be run with Node.js after setting the `DATABASE_URL` environment variable. Most scripts support a `--apply` flag to actually apply changes (dry-run by default).
 
 ---
 
