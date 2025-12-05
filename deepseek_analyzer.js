@@ -11,8 +11,8 @@ class DeepSeekEnhancedAnalyzer {
         this.model = options.model || 'deepseek-chat';
         // Lower temperature (0.1) for consistent, reliable medical advice
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.1;
-        // Reduced max tokens - optimized prompt needs less response space
-        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : 1000;
+        // Dynamic max tokens based on data complexity
+        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : this.calculateOptimalMaxTokens();
         // Token usage tracking
         this.lastTokenUsage = null;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
@@ -20,6 +20,32 @@ class DeepSeekEnhancedAnalyzer {
         this.concerns = Array.isArray(options.concerns) ? options.concerns : [];
         this.lookbackDays = Number.isFinite(parseInt(options.lookbackDays, 10)) ? parseInt(options.lookbackDays, 10) : 30;
         this.rawEventLimit = Number.isFinite(parseInt(options.rawEventLimit, 10)) ? parseInt(options.rawEventLimit, 10) : 1000;
+    }
+
+    // Calculate optimal max_tokens based on data complexity
+    calculateOptimalMaxTokens() {
+        const eventCount = this.events.length;
+        const dataDays = this.getDaysOfData();
+
+        // Handle edge cases
+        if (eventCount === 0 || dataDays === 0) {
+            return 600;
+        }
+
+        const eventsPerDay = eventCount / dataDays;
+        const isHighDensity = eventsPerDay > 20;
+
+        // Primary decision based on data days
+        if (dataDays < 7) {
+            // Less than a week of data
+            return isHighDensity ? 800 : 600;
+        } else if (dataDays < 30) {
+            // 1-4 weeks of data
+            return (eventCount >= 150 || isHighDensity) ? 1000 : 800;
+        } else {
+            // More than 30 days
+            return (eventCount >= 200) ? 1200 : 1000;
+        }
     }
 
     hasSufficientData() {
@@ -622,14 +648,55 @@ class DeepSeekEnhancedAnalyzer {
         };
 
         const systemPrompt = `You are a pediatric sleep/feeding coach. Follow this strict JSON schema. No markdown, no prose outside JSON. Avoid medical diagnosis; if red flags, advise contacting a pediatrician.
-Schema:
+
+Example response structure:
 {
-  "insights": [{"title":"","description":"","type":"developmental|sleep|feeding|health|general","confidence":0.0-1.0,"recommendation":"","whyItMatters":"","priority":1-5}],
-  "alerts": [{"title":"","severity":"low|medium|high","note":"","priority":1-5}],
-  "miniPlan": {"tonightBedtimeTarget":"HH:MM","nextWakeWindows":["XhYm","XhYm"],"feedingNote":""},
-  "measureOfSuccess": ""
+  "insights": [
+    {
+      "title": "Optimal Feeding Window Found",
+      "description": "Baby sleeps 45 minutes longer when fed at 7 PM compared to other times.",
+      "type": "feeding",
+      "confidence": 0.85,
+      "recommendation": "Try consistent 7 PM feeds for better sleep",
+      "whyItMatters": "Longer sleep supports brain development and growth",
+      "priority": 1
+    },
+    {
+      "title": "Wake Window Optimization",
+      "description": "2-hour wake windows lead to 30% longer naps than 1.5-hour windows.",
+      "type": "sleep",
+      "confidence": 0.75,
+      "recommendation": "Extend wake windows gradually to 2 hours",
+      "whyItMatters": "Appropriate wake windows prevent overtiredness and improve sleep quality",
+      "priority": 2
+    }
+  ],
+  "alerts": [
+    {
+      "title": "Low Wet Diapers",
+      "severity": "medium",
+      "note": "Only 3 wet diapers in last 24 hours (recommended: 6+ for age)",
+      "priority": 2
+    }
+  ],
+  "miniPlan": {
+    "tonightBedtimeTarget": "19:30",
+    "nextWakeWindows": ["1h30m", "2h"],
+    "feedingNote": "Offer extra 20ml at bedtime feed"
+  },
+  "measureOfSuccess": "Baby sleeps through 2-hour blocks tonight with fewer night wakings"
+
 }
-Limit: max 3 insights, max 2 alerts.`;
+
+Rules:
+1. Return ONLY valid JSON (no markdown, no extra text)
+2. Confidence: 0.0-1.0 based on data strength (0.9 = strong pattern, 0.3 = weak signal)
+3. Priority: 1 (highest) to 5 (lowest) based on importance and urgency
+4. Max 3 insights, max 2 alerts
+5. NO medical diagnosis - refer to pediatrician for concerns
+6. Use data-driven insights: reference specific stats from the provided data
+7. Make recommendations actionable and time-bound
+8. For "measureOfSuccess": describe one observable outcome for next 24 hours`;
 
         const userContent = JSON.stringify(contextPayload);
 

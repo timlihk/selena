@@ -1,27 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(DATABASE_URL=\"postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway\" node -e:*)",
-      "Bash(DATABASE_URL=\"postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway\" node:*)",
-      "Bash(git revert:*)",
-      "Bash(git fetch:*)",
-      "Bash(git reset:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(node -c:*)",
-      "Bash(find:*)",
       "Bash(node:*)",
+      "Bash(powershell:*)",
+      "Bash(del \"C:\\Users\\TimLi\\OneDrive\\Coding\\selena\\check_sleep.js\")",
+      "Bash(DATABASE_URL=\"postgresql://postgres:zojfDoPQwMPlPqzbdvkkDZDTDXQjqRhw@shortline.proxy.rlwy.net:40683/railway\" node debug_sleep.js:*)",
       "Bash(npm test:*)",
-      "Bash(railway logs:*)",
-      "Bash(command -v:*)",
-      "Bash(npm config:*)",
+      "Bash(chmod:*)",
       "Bash(echo:*)",
-      "Bash(sudo rm:*)",
-      "Bash(npm install)",
-      "Bash(npm run lint:*)",
-      "Bash(npm run lint:fix:*)",
-      "Bash(timeout 5 node:*)"
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

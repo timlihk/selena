@@ -855,55 +855,107 @@ app.post('/api/events', async (req, res) => {
       // Check for ALL incomplete sleep sessions WITHIN a transaction to prevent race conditions
       // Any new event (milk, diaper, bath) means the baby is awake, so complete all sleep sessions
       if (type !== 'sleep') {
-        try {
-          await withTransaction(async (client) => {
-            const incompleteSleeps = await Event.getAllIncompleteSleepForUpdate(client);
+        const sleepEnd = eventTimestamp || new Date().toISOString();
 
-            for (const incompleteSleep of incompleteSleeps) {
-              const sleepEnd = eventTimestamp || new Date().toISOString();
-              const sleepStart = incompleteSleep.sleep_start_time;
+        // Retry logic for transaction failures (e.g., deadlocks, concurrent updates)
+        const maxRetries = 3;
+        let lastError = null;
 
-              // Validate sleep times before auto-completion
-              try {
-                validateSleepTimes(sleepStart, sleepEnd);
-              } catch (validationError) {
-                console.error(`Auto-completion validation failed for sleep ${incompleteSleep.id}:`, validationError.message);
-                continue; // Skip this one but continue with others
-              }
-
-              const duration = Math.round(
-                (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            await withTransaction(async (client) => {
+              // 1. Complete incomplete sleep sessions (sleep_end_time IS NULL)
+              const incompleteSleeps = await client.query(
+                `SELECT * FROM baby_events
+                 WHERE type = 'sleep'
+                   AND sleep_start_time IS NOT NULL
+                   AND sleep_end_time IS NULL
+                 ORDER BY timestamp DESC
+                 FOR UPDATE`
               );
-              const sleepAmount = duration > 0 ? duration : 1;
 
-              // Verify sleep duration for unusual values (log only, don't block auto-completion)
-              const verification = verifySleepDuration(sleepAmount);
-              if (verification.requiresConfirmation) {
-                console.warn(
-                  `⚠️ Auto-completed sleep event ${incompleteSleep.id} has unusual duration: ${sleepAmount} minutes`,
-                  `(${verification.issue}) - ${verification.message}`
+              // 2. Also find sleep sessions that already have an end time LATER than our event timestamp
+              //    (e.g., a wake-up happened after the diaper change, but baby was already awake)
+              const laterEndSleeps = await client.query(
+                `SELECT * FROM baby_events
+                 WHERE type = 'sleep'
+                   AND sleep_start_time IS NOT NULL
+                   AND sleep_end_time IS NOT NULL
+                   AND sleep_end_time > $1
+                 ORDER BY timestamp DESC
+                 FOR UPDATE`,
+                [sleepEnd]
+              );
+
+              const allSleeps = [...incompleteSleeps.rows, ...laterEndSleeps.rows];
+
+              for (const sleep of allSleeps) {
+                const sleepStart = sleep.sleep_start_time;
+
+                // Validate sleep times before auto-completion
+                try {
+                  validateSleepTimes(sleepStart, sleepEnd);
+                } catch (validationError) {
+                  console.error(`Auto-completion validation failed for sleep ${sleep.id}:`, validationError.message);
+                  continue; // Skip this one but continue with others
+                }
+
+                const duration = Math.round(
+                  (new Date(sleepEnd) - new Date(sleepStart)) / (1000 * 60)
+                );
+                const sleepAmount = duration > 0 ? duration : 1;
+
+                // Verify sleep duration for unusual values (log only, don't block auto-completion)
+                const verification = verifySleepDuration(sleepAmount);
+                if (verification.requiresConfirmation) {
+                  console.warn(
+                    `⚠️ Auto-completed sleep event ${sleep.id} has unusual duration: ${sleepAmount} minutes`,
+                    `(${verification.issue}) - ${verification.message}`
+                  );
+                }
+
+                // Update within the transaction
+                await client.query(
+                  `UPDATE baby_events
+                   SET amount = $1, sleep_end_time = $2
+                   WHERE id = $3`,
+                  [sleepAmount, sleepEnd, sleep.id]
+                );
+
+                const isCorrection = sleep.sleep_end_time !== null;
+                logger.log(
+                  `Auto-${isCorrection ? 'corrected' : 'completed'} sleep event ${sleep.id} (by ${sleep.user_name}) ` +
+                  `with ${type} event at ${sleepEnd} ` +
+                  `(previous end: ${sleep.sleep_end_time || 'null'})`
                 );
               }
-
-              // Update within the transaction
-              await client.query(
-                `UPDATE baby_events
-                 SET amount = $1, sleep_end_time = $2
-                 WHERE id = $3`,
-                [sleepAmount, sleepEnd, incompleteSleep.id]
-              );
-
-              logger.log(
-                `Auto-completed sleep event ${incompleteSleep.id} (by ${incompleteSleep.user_name}) ` +
-                `with ${type} event at ${sleepEnd}`
-              );
+            });
+            // Success - break out of retry loop
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            // If transaction fails due to deadlock or concurrent update, retry with exponential backoff
+            const isRetryable = error.name === 'DatabaseError' ||
+                               error.name === 'TransactionError' ||
+                               error.name === 'ConcurrentUpdateError' ||
+                               (error.code && (error.code === '40P01' || error.code === '55P03')); // deadlock or lock_not_available
+            if (attempt < maxRetries && isRetryable) {
+              const delayMs = 100 * Math.pow(2, attempt - 1); // 100, 200, 400ms
+              console.warn(`Auto-completion transaction failed (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms:`, error.message);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+              continue;
             }
-          });
-        } catch (error) {
-          // If transaction fails (e.g., concurrent update), log but don't fail the request
+            // Not retryable or max retries reached
+            break;
+          }
+        }
+
+        if (lastError) {
+          // If all retries failed, log but don't fail the request
           console.error(
-            'Failed to auto-complete sleep (concurrent update):',
-            error.message
+            'Failed to auto-complete sleep after all retries:',
+            lastError.message
           );
         }
       }

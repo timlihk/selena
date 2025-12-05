@@ -19,6 +19,7 @@ const config = {
     API_KEY: process.env.DEEPSEEK_API_KEY || null,
     MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     TEMPERATURE: parseFloat(process.env.DEEPSEEK_TEMPERATURE || '0.1'),
+    // If not set, dynamic allocation based on data complexity will be used (600-1200 tokens)
     MAX_TOKENS: parseInt(process.env.DEEPSEEK_MAX_TOKENS || '1000', 10),
     REFRESH_TOKEN: process.env.DEEPSEEK_REFRESH_TOKEN || null,
     REFRESH_COOLDOWN_MS: parseInt(process.env.DEEPSEEK_REFRESH_COOLDOWN_MS || '300000', 10),
