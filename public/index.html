@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Baby Event Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=23">
+    <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
     <!-- Toast notification container -->
@@ -54,59 +54,10 @@
             </div>
         </div>
 
-        <div class="tracker-section">
-            <h2>Add New Event</h2>
-            <form id="eventForm" class="event-form">
-                <div class="form-group form-group-inline">
-                    <label for="userName">Who is recording:</label>
-                    <select id="userName" name="userName" required>
-                        <option value="">Select user</option>
-                        <!-- Users loaded from /api/config -->
-                    </select>
-                </div>
-
-                <div class="form-group form-group-inline">
-                    <label for="eventType">Event Type:</label>
-                    <select id="eventType" name="eventType" required>
-                        <option value="">Select an event</option>
-                        <option value="milk">🍼 Milk</option>
-                        <option value="diaper">💩 Diaper Change</option>
-                        <option value="bath">🛁 Bath</option>
-                        <option value="sleep">😴 Sleep</option>
-                    </select>
-                </div>
-
-                <div class="form-group form-group-inline">
-                    <label for="eventTime">Time:</label>
-                    <input type="datetime-local" id="eventTime" name="eventTime" required>
-                </div>
-
-                <div class="form-group" id="milkAmountGroup" style="display: none;">
-                    <label for="milkAmount">Milk Amount (ml):</label>
-                    <input type="number" id="milkAmount" name="milkAmount" min="0" max="500" placeholder="Enter ml">
-                </div>
-
-                <div class="form-group form-group-inline" id="diaperSubtypeGroup" style="display: none;">
-                    <label>Diaper Type:</label>
-                    <div class="diaper-buttons">
-                        <button type="button" class="btn-diaper" data-subtype="pee">💧 Pee</button>
-                        <button type="button" class="btn-diaper" data-subtype="poo">💩 Poo</button>
-                        <button type="button" class="btn-diaper" data-subtype="both">💧💩 Both</button>
-                    </div>
-                    <input type="hidden" id="diaperSubtype" name="diaperSubtype">
-                </div>
-
-                <div class="form-group" id="sleepTrackingGroup" style="display: none;">
-                    <label>Sleep Tracking:</label>
-                    <div class="sleep-buttons">
-                        <button type="button" id="fallAsleepBtn" class="btn-sleep btn-fall-asleep">😴 Fall Asleep</button>
-                        <button type="button" id="wakeUpBtn" class="btn-sleep btn-wake-up">☀️ Wake Up</button>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn-primary">Add Event</button>
-            </form>
-        </div>
+        <button id="addEventBtn" class="btn-add-event">
+            <span class="btn-add-event-icon">+</span>
+            <span class="btn-add-event-text">Add New Event</span>
+        </button>
 
         <div class="events-section">
             <div class="section-header">
@@ -218,6 +169,68 @@
         </div>
     </div>
 
+    <!-- Add Event Modal -->
+    <div id="addEventModal" class="modal" style="display: none;">
+        <div class="modal-content modal-content-event">
+            <div class="modal-header">
+                <h2>Add New Event</h2>
+                <button class="close-modal" id="closeEventModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="eventForm" class="event-form">
+                    <div class="form-group form-group-inline">
+                        <label for="userName">Who is recording:</label>
+                        <select id="userName" name="userName" required>
+                            <option value="">Select user</option>
+                            <!-- Users loaded from /api/config -->
+                        </select>
+                    </div>
+
+                    <div class="form-group form-group-inline">
+                        <label for="eventType">Event Type:</label>
+                        <select id="eventType" name="eventType" required>
+                            <option value="">Select an event</option>
+                            <option value="milk">🍼 Milk</option>
+                            <option value="diaper">💩 Diaper Change</option>
+                            <option value="bath">🛁 Bath</option>
+                            <option value="sleep">😴 Sleep</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group form-group-inline">
+                        <label for="eventTime">Time:</label>
+                        <input type="datetime-local" id="eventTime" name="eventTime" required>
+                    </div>
+
+                    <div class="form-group" id="milkAmountGroup" style="display: none;">
+                        <label for="milkAmount">Milk Amount (ml):</label>
+                        <input type="number" id="milkAmount" name="milkAmount" min="0" max="500" placeholder="Enter ml">
+                    </div>
+
+                    <div class="form-group form-group-inline" id="diaperSubtypeGroup" style="display: none;">
+                        <label>Diaper Type:</label>
+                        <div class="diaper-buttons">
+                            <button type="button" class="btn-diaper" data-subtype="pee">💧 Pee</button>
+                            <button type="button" class="btn-diaper" data-subtype="poo">💩 Poo</button>
+                            <button type="button" class="btn-diaper" data-subtype="both">💧💩 Both</button>
+                        </div>
+                        <input type="hidden" id="diaperSubtype" name="diaperSubtype">
+                    </div>
+
+                    <div class="form-group" id="sleepTrackingGroup" style="display: none;">
+                        <label>Sleep Tracking:</label>
+                        <div class="sleep-buttons">
+                            <button type="button" id="fallAsleepBtn" class="btn-sleep btn-fall-asleep">😴 Fall Asleep</button>
+                            <button type="button" id="wakeUpBtn" class="btn-sleep btn-wake-up">☀️ Wake Up</button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Add Event</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Baby Profile Modal -->
     <div id="babyProfileModal" class="modal" style="display: none;">
         <div class="modal-content">
@@ -234,6 +247,6 @@
     </div>
 
     <script src="pattern_analyzer.js"></script>
-    <script src="script.js?v=26"></script>
+    <script src="script.js?v=27"></script>
 </body>
 </html>

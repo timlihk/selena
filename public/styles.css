@@ -91,7 +91,7 @@ header p {
     opacity: 0.9;
 }
 
-.tracker-section, .events-section, .stats-section {
+.events-section, .stats-section {
     background: var(--bg-secondary);
     border-radius: 15px;
     padding: 30px;
@@ -100,7 +100,51 @@ header p {
     border: 1px solid var(--border-color);
 }
 
-.tracker-section h2, .events-section h2, .stats-section h2 {
+/* Add Event Button */
+.btn-add-event {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    padding: 20px 30px;
+    margin-bottom: 30px;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    color: white;
+    border: none;
+    border-radius: 15px;
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px var(--shadow);
+}
+
+.btn-add-event:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px var(--shadow);
+}
+
+.btn-add-event:active {
+    transform: translateY(-1px);
+}
+
+.btn-add-event-icon {
+    font-size: 1.5rem;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.btn-add-event-text {
+    line-height: 1;
+}
+
+/* Event Modal specific styles */
+.modal-content-event {
+    max-width: 500px;
+}
+
+.events-section h2, .stats-section h2 {
     color: var(--text-primary);
     margin-bottom: 20px;
     font-size: 1.5rem;

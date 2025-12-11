@@ -347,19 +347,45 @@ class BabyTracker {
             this.exportToPDF();
         });
 
+        // Add Event Modal
+        const addEventBtn = document.getElementById('addEventBtn');
+        const addEventModal = document.getElementById('addEventModal');
+        const closeEventModal = document.getElementById('closeEventModal');
+
+        if (addEventBtn && addEventModal) {
+            addEventBtn.addEventListener('click', () => {
+                this.showAddEventModal();
+            });
+
+            if (closeEventModal) {
+                closeEventModal.addEventListener('click', () => {
+                    this.hideAddEventModal();
+                });
+            }
+
+            // Close modal when clicking outside
+            addEventModal.addEventListener('click', (e) => {
+                if (e.target === addEventModal) {
+                    this.hideAddEventModal();
+                }
+            });
+        }
+
         // Baby Profile Modal
         const babyProfileBtn = document.getElementById('babyProfileBtn');
         const babyProfileModal = document.getElementById('babyProfileModal');
-        const closeModal = document.querySelector('.close-modal');
+        const closeModal = babyProfileModal?.querySelector('.close-modal');
 
         if (babyProfileBtn && babyProfileModal) {
             babyProfileBtn.addEventListener('click', () => {
                 this.showBabyProfileModal();
             });
 
-            closeModal.addEventListener('click', () => {
-                this.hideBabyProfileModal();
-            });
+            if (closeModal) {
+                closeModal.addEventListener('click', () => {
+                    this.hideBabyProfileModal();
+                });
+            }
 
             // Close modal when clicking outside
             babyProfileModal.addEventListener('click', (e) => {
@@ -398,6 +424,25 @@ class BabyTracker {
                 </div>
             `;
             document.getElementById('retryProfileBtn')?.addEventListener('click', () => this.showBabyProfileModal());
+        }
+    }
+
+    // Show add event modal
+    showAddEventModal() {
+        const modal = document.getElementById('addEventModal');
+        if (modal) {
+            // Reset form and set current time
+            this.resetForm();
+            this.setCurrentTime();
+            modal.style.display = 'flex';
+        }
+    }
+
+    // Hide add event modal
+    hideAddEventModal() {
+        const modal = document.getElementById('addEventModal');
+        if (modal) {
+            modal.style.display = 'none';
         }
     }
 
@@ -1091,6 +1136,10 @@ class BabyTracker {
                 loadingActive = false;
                 this.showButtonSuccess(submitButton, '✓ Added!');
             }
+
+            // Close the modal after successful event addition
+            this.hideAddEventModal();
+            this.showSuccess('Event added successfully');
         } catch (error) {
             console.error('Error adding event:', error);
             this.showError(`Failed to add event: ${error.message}`);
@@ -1195,6 +1244,8 @@ class BabyTracker {
                             loadingActive = false;
                             this.showButtonSuccess(button, successMessage);
                         }
+                        // Close the modal after successful sleep event
+                        this.hideAddEventModal();
                         return;
                     }
                     // User cancelled - just return without error
@@ -1230,6 +1281,8 @@ class BabyTracker {
                 loadingActive = false;
                 this.showButtonSuccess(button, successMessage);
             }
+            // Close the modal after successful sleep event
+            this.hideAddEventModal();
         } catch (error) {
             console.error('Error adding sleep event:', error);
             this.showError(`Failed to add sleep event: ${error.message}`);
