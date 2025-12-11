@@ -4,7 +4,7 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## Features
 
-- **Event Tracking**: Log milk feedings, sleep sessions, diaper changes, and bath times
+- **Event Tracking**: Log milk feedings, sleep sessions, diaper changes, and bath times via modal dialog
 - **Multi-user Support**: Track events by caregiver name
 - **Sleep Management**: Track sleep start/end times with overnight session support
 - **Sleep Auto-Completion**: Active sleep sessions automatically complete when other events (milk, diaper, bath) are recorded, preventing overlaps
@@ -17,7 +17,16 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.3.2 (Latest)
+### v1.4.1 (Latest)
+- **Modal-based Event Entry**: Replaced inline event form with a prominent "Add New Event" button
+- **Improved UX Flow**: Click button to open modal, form auto-closes on successful submission
+- **Toast Notifications**: Success messages displayed after adding events
+- **Cleaner Main Interface**: Reduced visual clutter on the main page
+
+### v1.4.0
+- Various stability and performance improvements
+
+### v1.3.2
 - **Enhanced Prompt Engineering**: Improved DeepSeek prompts with examples for consistent JSON responses
 - **Dynamic Token Allocation**: Intelligent token budgeting based on data complexity (600-1200 tokens)
 - **Cost Optimization**: Reduced token usage for small datasets without sacrificing quality

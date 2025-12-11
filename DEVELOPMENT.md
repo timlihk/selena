@@ -33,9 +33,9 @@ This guide covers:
 ```
 selena/
 ├── public/                # Frontend files (served statically)
-│   ├── 📄 index.html      # Main HTML entry point
-│   ├── 🎨 styles.css      # Complete CSS with dark mode & responsive design
-│   ├── ⚡ script.js       # Frontend JavaScript with timeline visualization
+│   ├── 📄 index.html      # Main HTML with modals (Add Event, Baby Profile)
+│   ├── 🎨 styles.css      # Complete CSS with dark mode, modals & responsive design
+│   ├── ⚡ script.js       # Frontend JavaScript with modal management & timeline
 │   └── 📊 pattern_analyzer.js  # Client-side statistical analysis (z-scores)
 ├── tests/                 # Test files
 │   └── 🧪 run-tests.js    # Automated test suite
@@ -204,6 +204,54 @@ class BabyTracker {
 - `renderTimeline()` - Creates horizontal 24-hour timeline with event markers
 - `initializeTheme()` - Sets up dark mode from localStorage or system preference
 - `toggleTheme()` - Switches between light and dark themes
+- `showAddEventModal()` - Opens the Add Event modal with form reset
+- `hideAddEventModal()` - Closes the Add Event modal
+- `showBabyProfileModal()` - Opens the Baby Profile modal
+- `hideBabyProfileModal()` - Closes the Baby Profile modal
+
+#### Modal Architecture
+
+The application uses modal dialogs for forms to reduce main page clutter:
+
+**Add Event Modal (`#addEventModal`)**
+- Triggered by clicking the prominent "Add New Event" button
+- Contains the full event form (user, type, time, type-specific fields)
+- Auto-closes on successful event submission with toast notification
+- Closes when clicking outside or pressing the X button
+- Form resets and time updates to current when opened
+
+**Baby Profile Modal (`#babyProfileModal`)**
+- Triggered by clicking the "Baby Profile" button in header
+- Contains profile editing and measurement tracking
+- Auto-save functionality for profile fields
+
+**Modal Implementation Pattern:**
+```javascript
+// Opening a modal
+showAddEventModal() {
+    const modal = document.getElementById('addEventModal');
+    if (modal) {
+        this.resetForm();
+        this.setCurrentTime();
+        modal.style.display = 'flex';
+    }
+}
+
+// Closing a modal
+hideAddEventModal() {
+    const modal = document.getElementById('addEventModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Event binding for modal close
+addEventModal.addEventListener('click', (e) => {
+    if (e.target === addEventModal) {
+        this.hideAddEventModal();
+    }
+});
+```
 
 #### Timeline Architecture
 

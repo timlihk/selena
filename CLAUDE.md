@@ -3,9 +3,14 @@
 ## Project Overview
 A web application to track newborn baby events (feeding, sleep, diapers, baths) with AI-powered insights. Deployed on Railway with PostgreSQL.
 
-**Current Version**: 1.3.2 (Enhanced prompt engineering & dynamic token allocation)
+**Current Version**: 1.4.1 (Modal-based event entry UI)
 
-### Recent Enhancements (v1.3.2)
+### Recent Enhancements (v1.4.1)
+- **Modal-based Event Entry**: Replaced inline form with a prominent "Add New Event" button that opens a modal dialog
+- **Improved UX**: Form auto-closes on success with toast notification
+- **Cleaner UI**: Main page now shows just the button, reducing visual clutter
+
+### Previous Updates (v1.3.2)
 - **Enhanced Prompt Engineering**: Comprehensive JSON schema examples for consistent AI responses
 - **Dynamic Token Allocation**: Intelligent token budgeting (600-1200 tokens) based on data complexity
 - **Cost Optimization**: Reduced token usage for small datasets without sacrificing quality
@@ -14,6 +19,7 @@ A web application to track newborn baby events (feeding, sleep, diapers, baths) 
 
 ### Core Features
 - Event tracking (milk, sleep, diaper, bath) with multi-user support
+- **Modal-based event entry** with prominent "Add New Event" button
 - Baby profile with age calculation and growth measurements
 - AI-powered insights via DeepSeek API (minimum 10 days data)
 - Real-time sleep session tracking with overnight support
@@ -36,9 +42,9 @@ A web application to track newborn baby events (feeding, sleep, diapers, baths) 
 - `deepseek_analyzer.js` - DeepSeek AI integration, pattern extraction, prompt building
 
 ### Frontend
-- `public/index.html` - Single-page UI with modals
-- `public/script.js` - BabyTracker class, event handling, AI insights rendering
-- `public/styles.css` - Responsive styles, dark mode support
+- `public/index.html` - Single-page UI with modals (Add Event modal, Baby Profile modal)
+- `public/script.js` - BabyTracker class, event handling, modal management, AI insights rendering
+- `public/styles.css` - Responsive styles, dark mode support, modal styles
 - `public/pattern_analyzer.js` - Client-side statistical analysis (z-scores)
 
 ### Tests
@@ -143,7 +149,9 @@ id, measurement_date, weight_kg, height_cm, head_circumference_cm, notes
 9. Returns combined statistical patterns + AI-enhanced insights
 
 ### Key Classes
-- `BabyTracker` (script.js) - Main frontend controller, timeline rendering, event handling
+- `BabyTracker` (script.js) - Main frontend controller, timeline rendering, event handling, modal management
+  - `showAddEventModal()` / `hideAddEventModal()` - Add Event modal controls
+  - `showBabyProfileModal()` / `hideBabyProfileModal()` - Baby Profile modal controls
 - `PatternAnalyzer` (pattern_analyzer.js) - Client-side statistical z-score analysis
 - `DeepSeekEnhancedAnalyzer` (deepseek_analyzer.js) - AI integration with enhanced prompt engineering
 - `PatternDetector` (deepseek_analyzer.js) - Real-time anomaly detection (feeding gaps, low sleep, etc.)
