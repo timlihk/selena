@@ -37,8 +37,34 @@ async function scanAllSleepIssues() {
       console.log(`      Duration: ${session.actual_minutes} minutes (INVALID)`);
     });
 
-    // 2. Find overlapping sleep sessions within same user
-    console.log('\n📊 2. Checking for overlapping sleep sessions (same user)...\n');
+    // 2. Find duplicate sleep sessions (same user, same start/end)
+    console.log('\n📊 2. Checking for duplicate sleep sessions (same user, same start/end)...\n');
+    const duplicateSameUser = await client.query(`
+      SELECT
+        user_name,
+        sleep_start_time,
+        sleep_end_time,
+        COUNT(*) AS count,
+        array_agg(id ORDER BY id) AS ids
+      FROM baby_events
+      WHERE type = 'sleep'
+        AND sleep_start_time IS NOT NULL
+        AND sleep_end_time IS NOT NULL
+      GROUP BY user_name, sleep_start_time, sleep_end_time
+      HAVING COUNT(*) > 1
+      ORDER BY user_name, sleep_start_time
+    `);
+
+    console.log(`📊 Found ${duplicateSameUser.rows.length} duplicate sleep sessions (same user):`);
+    duplicateSameUser.rows.forEach(dupe => {
+      console.log(`   ${dupe.user_name}: ${dupe.count} sessions with same times`);
+      console.log(`      Start: ${dupe.sleep_start_time}`);
+      console.log(`      End:   ${dupe.sleep_end_time}`);
+      console.log(`      IDs:   ${dupe.ids.join(', ')}`);
+    });
+
+    // 3. Find overlapping sleep sessions within same user (exclude exact duplicates and boundary-touching)
+    console.log('\n📊 3. Checking for overlapping sleep sessions (same user)...\n');
     const overlappingSameUser = await client.query(`
       WITH sleep_sessions AS (
         SELECT
@@ -46,7 +72,8 @@ async function scanAllSleepIssues() {
           user_name,
           sleep_start_time,
           sleep_end_time,
-          LAG(sleep_end_time) OVER (PARTITION BY user_name ORDER BY sleep_start_time) as prev_end_time
+          LAG(sleep_start_time) OVER (PARTITION BY user_name ORDER BY sleep_start_time, id) as prev_start_time,
+          LAG(sleep_end_time) OVER (PARTITION BY user_name ORDER BY sleep_start_time, id) as prev_end_time
         FROM baby_events
         WHERE type = 'sleep'
           AND sleep_start_time IS NOT NULL
@@ -57,10 +84,15 @@ async function scanAllSleepIssues() {
         user_name,
         sleep_start_time,
         sleep_end_time,
+        prev_start_time,
         prev_end_time
       FROM sleep_sessions
       WHERE sleep_start_time < prev_end_time
-      ORDER BY user_name, sleep_start_time
+        AND NOT (
+          sleep_start_time = prev_start_time
+          AND sleep_end_time = prev_end_time
+        )
+      ORDER BY user_name, sleep_start_time, id
     `);
 
     console.log(`📊 Found ${overlappingSameUser.rows.length} overlapping sleep sessions (same user):`);
@@ -68,11 +100,11 @@ async function scanAllSleepIssues() {
       console.log(`   ID ${session.id}: ${session.user_name}`);
       console.log(`      Start: ${session.sleep_start_time}`);
       console.log(`      End:   ${session.sleep_end_time}`);
-      console.log(`      Previous session ended: ${session.prev_end_time}`);
+      console.log(`      Previous session: ${session.prev_start_time} to ${session.prev_end_time}`);
     });
 
-    // 3. Find overlapping sleep sessions between different users
-    console.log('\n📊 3. Checking for overlapping sleep sessions (between users)...\n');
+    // 4. Find overlapping sleep sessions between different users
+    console.log('\n📊 4. Checking for overlapping sleep sessions (between users)...\n');
     const overlappingBetweenUsers = await client.query(`
       SELECT
         a.id as id_a,
@@ -110,8 +142,8 @@ async function scanAllSleepIssues() {
       console.log(`      Overlap: ${Math.round(overlap.overlap_minutes)} minutes`);
     });
 
-    // 4. Find days with excessive sleep totals (>24 hours)
-    console.log('\n📊 4. Checking for days with excessive sleep totals (>24 hours)...\n');
+    // 5. Find days with excessive sleep totals (>24 hours)
+    console.log('\n📊 5. Checking for days with excessive sleep totals (>24 hours)...\n');
     const excessiveSleepDays = await client.query(`
       SELECT
         DATE(timestamp AT TIME ZONE 'Asia/Hong_Kong') as date,
@@ -132,8 +164,8 @@ async function scanAllSleepIssues() {
       console.log(`   ${day.date}: ${day.total_minutes} minutes (${totalHours} hours) - ${day.session_count} sessions`);
     });
 
-    // 5. Find sleep sessions with unrealistic durations (>12 hours)
-    console.log('\n📊 5. Checking for unrealistic sleep durations (>12 hours)...\n');
+    // 6. Find sleep sessions with unrealistic durations (>12 hours)
+    console.log('\n📊 6. Checking for unrealistic sleep durations (>12 hours)...\n');
     const unrealisticDurations = await client.query(`
       SELECT
         id,
@@ -156,8 +188,8 @@ async function scanAllSleepIssues() {
       console.log(`      End:   ${session.sleep_end_time}`);
     });
 
-    // 6. Find sleep sessions with very short durations (<5 minutes)
-    console.log('\n📊 6. Checking for very short sleep durations (<5 minutes)...\n');
+    // 7. Find sleep sessions with very short durations (<5 minutes)
+    console.log('\n📊 7. Checking for very short sleep durations (<5 minutes)...\n');
     const shortDurations = await client.query(`
       SELECT
         id,
@@ -183,6 +215,7 @@ async function scanAllSleepIssues() {
     // Summary
     console.log('\n📈 SUMMARY OF SLEEP DATA ISSUES:');
     console.log(`   • Negative duration sessions: ${negativeSessions.rows.length}`);
+    console.log(`   • Duplicate sessions (same start/end): ${duplicateSameUser.rows.length}`);
     console.log(`   • Overlapping sessions (same user): ${overlappingSameUser.rows.length}`);
     console.log(`   • Overlapping sessions (between users): ${overlappingBetweenUsers.rows.length}`);
     console.log(`   • Days with >24 hours sleep: ${excessiveSleepDays.rows.length}`);
@@ -190,6 +223,7 @@ async function scanAllSleepIssues() {
     console.log(`   • Very short durations (<5m): ${shortDurations.rows.length}`);
 
     if (negativeSessions.rows.length > 0 ||
+        duplicateSameUser.rows.length > 0 ||
         overlappingSameUser.rows.length > 0 ||
         overlappingBetweenUsers.rows.length > 0 ||
         excessiveSleepDays.rows.length > 0 ||

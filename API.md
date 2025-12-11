@@ -6,7 +6,7 @@ Complete API reference for the Baby Event Tracker application.
 
 All API endpoints return JSON responses and support CORS for cross-origin requests.
 
-**Current Version**: 1.3.2
+**Current Version**: 1.4.2
 
 **Key Features**:
 - Event tracking (milk, sleep, diaper, bath)
@@ -670,7 +670,7 @@ Check if the API is running and healthy.
   "status": "OK",
   "message": "Baby Tracker API is running",
   "timestamp": "2025-11-13T14:30:00.000Z",
-  "version": "1.3.2"
+  "version": "1.4.2"
 }
 ```
 
@@ -969,7 +969,17 @@ CREATE TABLE baby_measurements (
 
 ## 📝 Changelog
 
-### v1.3.2 (Current)
+### v1.4.2 (Current)
+- **DeepSeek insight quality upgrades**: Prompt now requires evidence‑grounded, actionable outputs; analyzer is more resilient to partial/messy responses.
+- **Sleep data tooling upgrades**: Duplicate sleep sessions detected explicitly; overlap logic ignores boundary‑touching sessions.
+
+### v1.4.1
+- Modal-based event entry, improved UX flow, toast notifications, cleaner main interface.
+
+### v1.4.0
+- Various stability and performance improvements.
+
+### v1.3.2
 - **Enhanced Prompt Engineering**: Improved DeepSeek prompts with examples for consistent JSON responses
 - **Dynamic Token Allocation**: Intelligent token budgeting based on data complexity (600-1200 tokens)
 - **Cost Optimization**: Reduced token usage for small datasets without sacrificing quality

@@ -11,8 +11,16 @@ class DeepSeekEnhancedAnalyzer {
         this.model = options.model || 'deepseek-chat';
         // Lower temperature (0.1) for consistent, reliable medical advice
         this.temperature = Number.isFinite(parseFloat(options.temperature)) ? parseFloat(options.temperature) : 0.1;
-        // Dynamic max tokens based on data complexity
-        this.maxTokens = Number.isFinite(parseInt(options.maxTokens, 10)) ? parseInt(options.maxTokens, 10) : this.calculateOptimalMaxTokens();
+        // Max tokens: prioritize insight quality over cost unless explicitly overridden.
+        // If not provided, use a generous floor and scale up for complex histories.
+        const parsedMaxTokens = (options.maxTokens === undefined || options.maxTokens === null || options.maxTokens === '')
+            ? null
+            : parseInt(options.maxTokens, 10);
+        const calculatedTokens = this.calculateOptimalMaxTokens();
+        const qualityFloor = 1500;
+        this.maxTokens = Number.isFinite(parsedMaxTokens)
+            ? parsedMaxTokens
+            : Math.max(qualityFloor, calculatedTokens);
         // Token usage tracking
         this.lastTokenUsage = null;
         this.retries = Number.isFinite(parseInt(options.retries, 10)) ? parseInt(options.retries, 10) : 2;
@@ -647,7 +655,15 @@ class DeepSeekEnhancedAnalyzer {
             recentEvents: (context.recentEvents || []).slice(-this.rawEventLimit)
         };
 
-        const systemPrompt = `You are a pediatric sleep/feeding coach. Follow this strict JSON schema. No markdown, no prose outside JSON. Avoid medical diagnosis; if red flags, advise contacting a pediatrician.
+        const systemPrompt = `You are a pediatric sleep/feeding coach. Follow this strict JSON schema. Return ONLY JSON. No markdown, no prose outside JSON. Avoid medical diagnosis; if red flags, advise contacting a pediatrician.
+
+Critical rules to maximize usefulness and correctness:
+1. Use ONLY the provided data and stats. Do NOT invent numbers, dates, or patterns. If unsure, say "no clear signal yet".
+2. Every insight must reference specific evidence from the payload (e.g., "avgSleepMin=92", "feedsPerDay=7.5", "best hour 19:00 with n=12 samples").
+3. Prefer 1–3 high‑impact insights over generic advice. Make them actionable for the next 24 hours.
+4. If data is sparse or noisy, provide at most 1 low‑confidence insight + a clear logging suggestion.
+5. Alerts are ONLY for potential red flags supported by data; keep tone calm and non‑diagnostic.
+6. Respect age norms and timezone when recommending schedules; avoid unsafe guidance.
 
 Example response structure:
 {
@@ -689,14 +705,15 @@ Example response structure:
 }
 
 Rules:
-1. Return ONLY valid JSON (no markdown, no extra text)
-2. Confidence: 0.0-1.0 based on data strength (0.9 = strong pattern, 0.3 = weak signal)
-3. Priority: 1 (highest) to 5 (lowest) based on importance and urgency
-4. Max 3 insights, max 2 alerts
-5. NO medical diagnosis - refer to pediatrician for concerns
-6. Use data-driven insights: reference specific stats from the provided data
-7. Make recommendations actionable and time-bound
-8. For "measureOfSuccess": describe one observable outcome for next 24 hours`;
+1. Return ONLY valid JSON (no markdown, no extra text).
+2. Allowed type for insights: "feeding", "sleep", "diaper", "general".
+3. Allowed severity for alerts: "low", "medium", "high".
+4. Confidence: 0.0-1.0 based on data strength (0.9 strong pattern, 0.3 weak signal).
+5. Priority: 1 (highest) to 5 (lowest) based on importance/urgency.
+6. Max 3 insights, max 2 alerts.
+7. NO medical diagnosis. If concerning trend, suggest contacting a pediatrician.
+8. Recommendations must be specific, time‑bound, and feasible for age.
+9. For "measureOfSuccess": describe ONE observable outcome for next 24 hours (not vague).`;
 
         const userContent = JSON.stringify(contextPayload);
 
@@ -736,7 +753,9 @@ Rules:
                         'Authorization': `Bearer ${this.apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 45000
+                    timeout: 60000,
+                    maxBodyLength: 1_000_000,
+                    maxContentLength: 1_000_000
                 });
 
                 // Track token usage for cost monitoring
@@ -781,7 +800,7 @@ Rules:
                 }
 
                 // Server errors - retriable with backoff
-                const retriable = [408, 425, 500, 502, 503, 504].includes(status);
+                const retriable = !status || [408, 425, 500, 502, 503, 504].includes(status);
                 const isLastAttempt = i === attempts - 1;
 
                 if (!retriable || isLastAttempt) {
@@ -789,8 +808,9 @@ Rules:
                     throw error;
                 }
 
-                // Exponential backoff: 1s, 2s, 4s...
-                const delayMs = Math.min(1000 * Math.pow(2, i), 10000);
+                // Exponential backoff with jitter: 1s, 2s, 4s... (cap 10s)
+                const baseDelayMs = Math.min(1000 * Math.pow(2, i), 10000);
+                const delayMs = baseDelayMs + Math.floor(Math.random() * 250);
                 console.log(`[DeepSeek] Retry ${i + 1}/${attempts} after ${delayMs}ms`);
                 await this.delay(delayMs);
             }
@@ -816,36 +836,64 @@ Rules:
     parseDeepSeekResponse(response, patterns) {
         try {
             // Strip markdown code blocks if present (```json ... ```)
-            let cleanResponse = response.trim();
+            let cleanResponse = (response || '').trim();
             if (cleanResponse.startsWith('```')) {
                 cleanResponse = cleanResponse.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
             }
 
-            // Try to parse as JSON
-            const parsed = JSON.parse(cleanResponse);
+            // If DeepSeek adds prose, extract the first JSON object.
+            const extractedJson = this.extractFirstJsonObject(cleanResponse) || cleanResponse;
+            const parsed = JSON.parse(extractedJson);
+
             return {
                 ...parsed,
                 patterns,
-                dataDays: patterns.overallStats.dataDays,
+                dataDays: patterns?.overallStats?.dataDays,
                 source: 'deepseek_ai'
             };
         } catch (error) {
             console.log('[DeepSeek] JSON parse failed, using text fallback:', error.message);
-            // If JSON parsing fails, return as text analysis
             return {
                 insights: [{
                     title: 'AI Analysis Complete',
                     description: response,
                     type: 'general',
                     confidence: 0.7,
-                    recommendation: 'Review the detailed analysis above'
+                    recommendation: 'Review the detailed analysis above',
+                    whyItMatters: '',
+                    priority: 3
                 }],
+                alerts: [],
+                miniPlan: {
+                    tonightBedtimeTarget: '',
+                    nextWakeWindows: [],
+                    feedingNote: ''
+                },
+                measureOfSuccess: '',
                 summary: 'AI analysis completed successfully',
                 patterns,
-                dataDays: patterns.overallStats.dataDays,
+                dataDays: patterns?.overallStats?.dataDays,
                 source: 'deepseek_ai'
             };
         }
+    }
+
+    // Extract the first balanced JSON object from a string.
+    // Handles cases where the model wraps JSON with extra text.
+    extractFirstJsonObject(text) {
+        if (!text) {return null;}
+        const start = text.indexOf('{');
+        if (start === -1) {return null;}
+        let depth = 0;
+        for (let i = start; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '{') {depth += 1;}
+            if (ch === '}') {depth -= 1;}
+            if (depth === 0) {
+                return text.slice(start, i + 1);
+            }
+        }
+        return null;
     }
 
     sanitizeAIResponse(aiResponse) {
@@ -855,25 +903,50 @@ Rules:
 
         const sanitized = { ...aiResponse };
 
+        // Normalize missing top-level fields to keep UI stable.
+        if (!Array.isArray(sanitized.insights)) {sanitized.insights = [];}
+        if (!Array.isArray(sanitized.alerts)) {sanitized.alerts = [];}
+        if (!sanitized.miniPlan || typeof sanitized.miniPlan !== 'object') {
+            sanitized.miniPlan = { tonightBedtimeTarget: '', nextWakeWindows: [], feedingNote: '' };
+        }
+        if (sanitized.measureOfSuccess === undefined || sanitized.measureOfSuccess === null) {
+            sanitized.measureOfSuccess = '';
+        }
+
         if (Array.isArray(sanitized.insights)) {
-            sanitized.insights = sanitized.insights.slice(0, 3).map(insight => ({
-                title: this.escapeText(insight.title),
-                description: this.escapeText(insight.description),
-                type: this.escapeText(insight.type),
-                confidence: Number(insight.confidence) || 0,
-                recommendation: this.escapeText(insight.recommendation),
-                whyItMatters: this.escapeText(insight.whyItMatters),
-                priority: Number(insight.priority) || 3
-            }));
+            const allowedInsightTypes = new Set(['feeding', 'sleep', 'diaper', 'general']);
+            sanitized.insights = sanitized.insights.slice(0, 3).map(insight => {
+                const rawType = this.escapeText(insight.type).toLowerCase();
+                const type = allowedInsightTypes.has(rawType) ? rawType : 'general';
+                const confidence = Math.min(Math.max(Number(insight.confidence) || 0, 0), 1);
+                const priorityNum = Number(insight.priority);
+                const priority = Number.isFinite(priorityNum) ? Math.min(Math.max(priorityNum, 1), 5) : 3;
+                return {
+                    title: this.escapeText(insight.title),
+                    description: this.escapeText(insight.description),
+                    type,
+                    confidence,
+                    recommendation: this.escapeText(insight.recommendation),
+                    whyItMatters: this.escapeText(insight.whyItMatters),
+                    priority
+                };
+            });
         }
 
         if (Array.isArray(sanitized.alerts)) {
-            sanitized.alerts = sanitized.alerts.slice(0, 2).map(alert => ({
-                title: this.escapeText(alert.title),
-                severity: this.escapeText(alert.severity),
-                note: this.escapeText(alert.note),
-                priority: Number(alert.priority) || 3
-            }));
+            const allowedSeverities = new Set(['low', 'medium', 'high']);
+            sanitized.alerts = sanitized.alerts.slice(0, 2).map(alert => {
+                const rawSeverity = this.escapeText(alert.severity).toLowerCase();
+                const severity = allowedSeverities.has(rawSeverity) ? rawSeverity : 'low';
+                const priorityNum = Number(alert.priority);
+                const priority = Number.isFinite(priorityNum) ? Math.min(Math.max(priorityNum, 1), 5) : 3;
+                return {
+                    title: this.escapeText(alert.title),
+                    severity,
+                    note: this.escapeText(alert.note),
+                    priority
+                };
+            });
         }
 
         if (sanitized.miniPlan) {
