@@ -71,6 +71,12 @@ class BabyTracker {
         this.activeModal = null;
         this.lastFocusedElement = null;
         this.modalKeydownHandler = (e) => this.handleModalKeydown(e);
+        this.confirmModalOpen = false;
+        window.addEventListener('beforeunload', () => {
+            if (this.activeModal) {
+                document.removeEventListener('keydown', this.modalKeydownHandler);
+            }
+        });
         this.init();
     }
 
@@ -452,7 +458,7 @@ class BabyTracker {
 
     handleModalKeydown(e) {
         if (!this.activeModal) {return;}
-        if (document.querySelector('.confirm-modal-overlay')) {return;}
+        if (this.confirmModalOpen) {return;}
 
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -1067,6 +1073,7 @@ class BabyTracker {
         } = options;
 
         return new Promise((resolve) => {
+            this.confirmModalOpen = true;
             // Create overlay
             const overlay = document.createElement('div');
             overlay.className = 'confirm-modal-overlay';
@@ -1096,13 +1103,25 @@ class BabyTracker {
             const confirmBtn = modal.querySelector('.btn-confirm-ok');
             cancelBtn.focus();
 
+            const onKeydown = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cleanup();
+                    resolve(false);
+                }
+            };
+
             const cleanup = () => {
+                this.confirmModalOpen = false;
+                document.removeEventListener('keydown', onKeydown);
                 overlay.classList.add('confirm-modal-closing');
                 modal.classList.add('confirm-modal-closing');
                 setTimeout(() => {
                     overlay.remove();
                 }, 200);
             };
+
+            document.addEventListener('keydown', onKeydown);
 
             // Handle cancel
             cancelBtn.addEventListener('click', () => {
@@ -1328,13 +1347,13 @@ class BabyTracker {
                         await this.checkActiveSleep(); // Update sleep banner
                         this.setCurrentTime();
 
-            if (button) {
-                this.setButtonLoading(button, false);
-                loadingActive = false;
-            }
-            // Close the modal after successful sleep event
-            this.hideAddEventModal();
-            return;
+                        if (button) {
+                            this.setButtonLoading(button, false);
+                            loadingActive = false;
+                        }
+                        // Close the modal after successful sleep event
+                        this.hideAddEventModal();
+                        return;
                     }
                     // User cancelled - just return without error
                     if (button) {
