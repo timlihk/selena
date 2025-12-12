@@ -17,7 +17,10 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.4.3 (Latest)
+### v1.5.0 (Latest)
+- **Installable PWA**: Added web manifest, app icons, and offline app‑shell caching via service worker.
+
+### v1.4.3
 - **Smart Alerts visibility**: Alerts section now hides when there are no active alerts.
 - **Primary action placement**: "Add New Event" button moved to the top for faster access.
 
@@ -123,6 +126,15 @@ npm run dev
 # Tests
 npm test
 ```
+
+## PWA (Installable App)
+
+Baby Tracker now includes basic Progressive Web App support:
+- Installable from Chrome/Edge/Safari (Add to Home Screen).
+- Offline app shell caching via service worker.
+
+Notes:
+- The included icons are SVG placeholders. Replace with PNGs (`192x192`, `512x512`, and a maskable variant) for best cross‑platform support, especially iOS.
 
 ## API Endpoints
 

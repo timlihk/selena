@@ -84,6 +84,7 @@ class BabyTracker {
         await this.loadConfig();
         this.setCurrentTime();
         this.bindEvents();
+        this.registerServiceWorker();
         // Load events first, then run stats and timeline in parallel
         await this.loadEvents();
         await Promise.all([
@@ -91,6 +92,15 @@ class BabyTracker {
             this.renderTimeline(),
             this.checkActiveSleep()
         ]);
+    }
+
+    registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) {return;}
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+                console.warn('Service worker registration failed:', err);
+            });
+        });
     }
 
     async loadConfig() {

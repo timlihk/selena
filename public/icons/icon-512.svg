@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Baby Tracker">
+  <rect width="512" height="512" rx="96" fill="#667eea"/>
+  <circle cx="256" cy="256" r="160" fill="#ffffff" opacity="0.95"/>
+  <path d="M176 248c22-48 54-70 80-70s58 22 80 70" fill="none" stroke="#667eea" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="204" cy="236" r="16" fill="#667eea"/>
+  <circle cx="308" cy="236" r="16" fill="#667eea"/>
+  <path d="M206 324c28 22 72 22 100 0" fill="none" stroke="#667eea" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="156" cy="196" r="14" fill="#ffffff"/>
+  <circle cx="356" cy="196" r="14" fill="#ffffff"/>
+</svg>
+
