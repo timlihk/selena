@@ -17,7 +17,11 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.4.2 (Latest)
+### v1.4.3 (Latest)
+- **Smart Alerts visibility**: Alerts section now hides when there are no active alerts.
+- **Primary action placement**: "Add New Event" button moved to the top for faster access.
+
+### v1.4.2
 - **Deeper, more reliable DeepSeek insights**: Improved prompt grounding, larger default response budget, stronger retries, and robust JSON extraction/validation.
 - **Sleep anomaly scanner improvements**: Now reports exact duplicates separately and avoids false “overlap” flags when sessions touch at boundaries.
 

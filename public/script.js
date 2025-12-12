@@ -2425,8 +2425,17 @@ class BabyTracker {
         if (!container) {return;}
 
         if (!alerts || alerts.length === 0) {
-            container.innerHTML = '<p class="no-data">✅ No alerts - everything looks good!</p>';
+            const section = container.closest('.alerts-section');
+            if (section) {
+                section.style.display = 'none';
+            }
+            container.innerHTML = '';
             return;
+        }
+
+        const section = container.closest('.alerts-section');
+        if (section) {
+            section.style.display = '';
         }
 
         const alertsHtml = alerts.map(alert => {
