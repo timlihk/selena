@@ -68,6 +68,9 @@ class BabyTracker {
         this.profileAutoSaveTimer = null;
         this.activeSleepTimer = null;
         this.activeSleepSessions = [];
+        this.activeModal = null;
+        this.lastFocusedElement = null;
+        this.modalKeydownHandler = (e) => this.handleModalKeydown(e);
         this.init();
     }
 
@@ -354,7 +357,7 @@ class BabyTracker {
 
         if (addEventBtn && addEventModal) {
             addEventBtn.addEventListener('click', () => {
-                this.showAddEventModal();
+                this.showAddEventModal(addEventBtn);
             });
 
             if (closeEventModal) {
@@ -378,7 +381,7 @@ class BabyTracker {
 
         if (babyProfileBtn && babyProfileModal) {
             babyProfileBtn.addEventListener('click', () => {
-                this.showBabyProfileModal();
+                this.showBabyProfileModal(babyProfileBtn);
             });
 
             if (closeModal) {
@@ -396,8 +399,96 @@ class BabyTracker {
         }
     }
 
+    getFocusableElements(modal) {
+        if (!modal) {return [];}
+        const selectors = [
+            'a[href]',
+            'button:not([disabled])',
+            'textarea:not([disabled])',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ];
+        return Array.from(modal.querySelectorAll(selectors.join(',')))
+            .filter(el => el.offsetParent !== null);
+    }
+
+    openModal(modal, triggerElement = null) {
+        if (!modal) {return;}
+        this.lastFocusedElement = triggerElement || document.activeElement;
+        this.activeModal = modal;
+
+        modal.style.display = 'flex';
+
+        const appContent = document.getElementById('appContent');
+        if (appContent) {
+            appContent.setAttribute('aria-hidden', 'true');
+        }
+
+        document.addEventListener('keydown', this.modalKeydownHandler);
+
+        const focusables = this.getFocusableElements(modal);
+        const focusTarget = focusables[0] || modal.querySelector('.modal-content') || modal;
+        focusTarget.focus({ preventScroll: true });
+    }
+
+    closeModal(modal) {
+        if (!modal) {return;}
+        modal.style.display = 'none';
+        this.activeModal = null;
+
+        const appContent = document.getElementById('appContent');
+        if (appContent) {
+            appContent.removeAttribute('aria-hidden');
+        }
+
+        document.removeEventListener('keydown', this.modalKeydownHandler);
+
+        if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
+            this.lastFocusedElement.focus({ preventScroll: true });
+        }
+        this.lastFocusedElement = null;
+    }
+
+    handleModalKeydown(e) {
+        if (!this.activeModal) {return;}
+        if (document.querySelector('.confirm-modal-overlay')) {return;}
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            if (this.activeModal.id === 'addEventModal') {
+                this.hideAddEventModal();
+            } else if (this.activeModal.id === 'babyProfileModal') {
+                this.hideBabyProfileModal();
+            } else {
+                this.closeModal(this.activeModal);
+            }
+            return;
+        }
+
+        if (e.key !== 'Tab') {return;}
+
+        const focusables = this.getFocusableElements(this.activeModal);
+        if (focusables.length === 0) {
+            e.preventDefault();
+            return;
+        }
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+
+        if (e.shiftKey && active === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+
     // Show baby profile modal
-    async showBabyProfileModal() {
+    async showBabyProfileModal(triggerElement = null) {
         const modal = document.getElementById('babyProfileModal');
         const profileContent = document.getElementById('profileContent');
 
@@ -411,7 +502,7 @@ class BabyTracker {
                 </div>
             `;
 
-            modal.style.display = 'flex';
+            this.openModal(modal, triggerElement);
 
             // Load profile data
             await this.loadBabyProfileData(profileContent);
@@ -428,13 +519,13 @@ class BabyTracker {
     }
 
     // Show add event modal
-    showAddEventModal() {
+    showAddEventModal(triggerElement = null) {
         const modal = document.getElementById('addEventModal');
         if (modal) {
             // Reset form and set current time
             this.resetForm();
             this.setCurrentTime();
-            modal.style.display = 'flex';
+            this.openModal(modal, triggerElement);
         }
     }
 
@@ -442,7 +533,7 @@ class BabyTracker {
     hideAddEventModal() {
         const modal = document.getElementById('addEventModal');
         if (modal) {
-            modal.style.display = 'none';
+            this.closeModal(modal);
         }
     }
 
@@ -456,7 +547,7 @@ class BabyTracker {
 
         const modal = document.getElementById('babyProfileModal');
         if (modal) {
-            modal.style.display = 'none';
+            this.closeModal(modal);
         }
     }
 
@@ -1134,7 +1225,6 @@ class BabyTracker {
             if (submitButton) {
                 this.setButtonLoading(submitButton, false);
                 loadingActive = false;
-                this.showButtonSuccess(submitButton, '✓ Added!');
             }
 
             // Close the modal after successful event addition
@@ -1238,15 +1328,13 @@ class BabyTracker {
                         await this.checkActiveSleep(); // Update sleep banner
                         this.setCurrentTime();
 
-                        const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
-                        if (button) {
-                            this.setButtonLoading(button, false);
-                            loadingActive = false;
-                            this.showButtonSuccess(button, successMessage);
-                        }
-                        // Close the modal after successful sleep event
-                        this.hideAddEventModal();
-                        return;
+            if (button) {
+                this.setButtonLoading(button, false);
+                loadingActive = false;
+            }
+            // Close the modal after successful sleep event
+            this.hideAddEventModal();
+            return;
                     }
                     // User cancelled - just return without error
                     if (button) {
@@ -1275,11 +1363,9 @@ class BabyTracker {
             await this.checkActiveSleep(); // Update sleep banner
             this.setCurrentTime();
 
-            const successMessage = sleepSubType === 'fall_asleep' ? '😴 Asleep!' : '☀️ Awake!';
             if (button) {
                 this.setButtonLoading(button, false);
                 loadingActive = false;
-                this.showButtonSuccess(button, successMessage);
             }
             // Close the modal after successful sleep event
             this.hideAddEventModal();
