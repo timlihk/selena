@@ -1,6 +1,6 @@
 {
   "name": "baby-tracker",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "A simple website to track newborn baby events",
   "main": "server.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "test": "node tests/run-tests.js",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "build:vendor": "esbuild node_modules/date-fns-tz/dist/esm/index.js --bundle --format=iife --global-name=dateFnsTz --outfile=public/vendor/date-fns-tz.min.js --minify && cp node_modules/date-fns/cdn.min.js public/vendor/date-fns.min.js"
   },
   "devDependencies": {
     "esbuild": "^0.27.2",

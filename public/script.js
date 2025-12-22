@@ -1066,6 +1066,26 @@ class BabyTracker {
         this.showToast(message, 'info');
     }
 
+    // Persistent error banner for analytics status
+    showErrorBanner(message) {
+        let banner = document.getElementById('errorBanner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'errorBanner';
+            banner.className = 'error-banner';
+            document.body.insertBefore(banner, document.body.firstChild);
+        }
+        banner.textContent = message;
+        banner.style.display = 'block';
+    }
+
+    hideErrorBanner() {
+        const banner = document.getElementById('errorBanner');
+        if (banner) {
+            banner.style.display = 'none';
+        }
+    }
+
     /**
      * Show a custom confirmation modal (replaces browser confirm())
      * @param {string} message - The confirmation message
@@ -1601,7 +1621,7 @@ class BabyTracker {
             this.hideErrorBanner();
         } catch (error) {
             console.error('Failed to refresh analytics:', error);
-            this.showError('Analytics may be stale; retrying soon.');
+            this.showErrorBanner('Analytics may be stale');
         }
     }
 
