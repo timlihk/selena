@@ -11,6 +11,34 @@ function getDayBounds(date, timeZone) {
   };
 }
 
+/**
+ * Calculate overlapping minutes between a sleep event and a time range.
+ * Only counts the portion of sleep that falls within the day boundaries.
+ */
+function getSleepMinutesInRange(event, rangeStart, rangeEnd) {
+  if (!event || event.type !== 'sleep') {return 0;}
+
+  let sleepStart = event.sleep_start_time ? new Date(event.sleep_start_time) : null;
+  if (!sleepStart || Number.isNaN(sleepStart.getTime())) {
+    sleepStart = event.timestamp ? new Date(event.timestamp) : null;
+  }
+
+  let sleepEnd = event.sleep_end_time ? new Date(event.sleep_end_time) : null;
+  if (!sleepEnd || Number.isNaN(sleepEnd.getTime())) {
+    sleepEnd = event.timestamp ? new Date(event.timestamp) : new Date();
+  }
+
+  if (!sleepStart || !sleepEnd) {return 0;}
+
+  // Clamp sleep times to the range boundaries
+  const overlapStart = sleepStart < rangeStart ? rangeStart : sleepStart;
+  const overlapEnd = sleepEnd > rangeEnd ? rangeEnd : sleepEnd;
+
+  // Calculate overlap in minutes
+  const overlapMs = overlapEnd - overlapStart;
+  return overlapMs > 0 ? overlapMs / (1000 * 60) : 0;
+}
+
 function eventOverlapsRange(event, start, end) {
   if (!event) {return false;}
 
@@ -105,7 +133,8 @@ function getLastNDaysSleepBreakdown(events, timeZone, days = 3) {
     const daySleepEvents = events.filter(event => event.type === 'sleep')
       .filter(event => eventOverlapsRange(event, start, end));
 
-    const totalMinutes = daySleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+    // Use getSleepMinutesInRange to only count sleep within day boundaries
+    const totalMinutes = daySleepEvents.reduce((sum, e) => sum + getSleepMinutesInRange(e, start, end), 0);
     const totalHours = totalMinutes / 60;
 
     const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : `${date.getMonth() + 1}/${date.getDate()}`;
@@ -122,6 +151,7 @@ function getLastNDaysSleepBreakdown(events, timeZone, days = 3) {
 }
 
 function calculateSleepQuality(events, timeZone) {
+  const { start: todayStart, end: todayEnd } = getDayBounds(new Date(), timeZone);
   const todayEvents = getTodayEvents(events, timeZone);
   const sleepEvents = todayEvents
     .filter(e => e.type === 'sleep')
@@ -131,7 +161,8 @@ function calculateSleepQuality(events, timeZone) {
     return null;
   }
 
-  const totalSleepMinutes = sleepEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+  // Use getSleepMinutesInRange to only count sleep within today's boundaries
+  const totalSleepMinutes = sleepEvents.reduce((sum, e) => sum + getSleepMinutesInRange(e, todayStart, todayEnd), 0);
   const totalSleepHours = totalSleepMinutes / 60;
 
   const last3DaysBreakdown = getLastNDaysSleepBreakdown(events, timeZone, 3);
@@ -281,7 +312,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
       type: 'feeding',
       severity: 'warning',
       icon: '🍼',
-      message: `Feeding overdue by ${Math.abs(feedingIntel.minutesUntilNext)} minutes`
+      message: `Feeding overdue by ${Math.abs(feedingIntel.minutesUntilNext)} minutes`,
+      explanation: 'Last feed exceeded the usual interval; offer milk and observe intake.'
     });
   }
 
@@ -291,7 +323,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
         type: 'diaper',
         severity: 'alert',
         icon: '💧',
-        message: `No wet diaper in ${diaperHealth.hoursSincePee}h ${diaperHealth.minutesSincePee}m - check hydration`
+        message: `No wet diaper in ${diaperHealth.hoursSincePee}h ${diaperHealth.minutesSincePee}m - check hydration`,
+        explanation: 'Low urine output can indicate dehydration; offer fluids and monitor.'
       });
     }
     if (diaperHealth.noChangeAlert) {
@@ -299,7 +332,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
         type: 'diaper',
         severity: 'warning',
         icon: '💩',
-        message: `No diaper change in ${diaperHealth.hoursSinceLast}h ${diaperHealth.minutesSinceLast}m`
+        message: `No diaper change in ${diaperHealth.hoursSinceLast}h ${diaperHealth.minutesSinceLast}m`,
+        explanation: 'Long gaps between changes can cause discomfort/diaper rash; check diaper.'
       });
     }
     if (diaperHealth.noPooAlert) {
@@ -307,7 +341,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
         type: 'diaper',
         severity: 'info',
         icon: '💩',
-        message: `No poo in ${diaperHealth.hoursSincePoo}h - monitor for constipation`
+        message: `No poo in ${diaperHealth.hoursSincePoo}h - monitor for constipation`,
+        explanation: 'Bowel movements can vary; monitor for discomfort or >48h delays.'
       });
     }
   }
@@ -320,7 +355,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
         type: 'sleep',
         severity: 'alert',
         icon: '😴',
-        message: `Only ${sleepQuality.totalHours}h sleep today - ${deficit.toFixed(1)}h below recommended`
+        message: `Only ${sleepQuality.totalHours}h sleep today - ${deficit.toFixed(1)}h below recommended`,
+        explanation: 'Low total sleep can lead to overtiredness; consider an earlier bedtime.'
       });
     }
     if (parseFloat(sleepQuality.longestWakeHours) > 4) {
@@ -328,7 +364,8 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
         type: 'sleep',
         severity: 'warning',
         icon: '😴',
-        message: `Wake window of ${sleepQuality.longestWakeHours}h exceeds 4h - baby may be overtired`
+        message: `Wake window of ${sleepQuality.longestWakeHours}h exceeds 4h - baby may be overtired`,
+        explanation: 'Long wake windows can make falling asleep harder; aim for shorter wake times.'
       });
     }
   }
