@@ -73,6 +73,7 @@ class BabyTracker {
         this.activeModal = null;
         this.lastFocusedElement = null;
         this.analyticsErrorNotified = false;
+        this.autoRefreshInterval = null;
         this.modalKeydownHandler = (e) => this.handleModalKeydown(e);
         this.confirmModalOpen = false;
         window.addEventListener('beforeunload', () => {
@@ -95,6 +96,7 @@ class BabyTracker {
             this.renderTimeline(),
             this.checkActiveSleep()
         ]);
+        this.scheduleAutoRefresh();
     }
 
     registerServiceWorker() {
@@ -1065,6 +1067,19 @@ class BabyTracker {
 
     showInfo(message) {
         this.showToast(message, 'info');
+    }
+
+    // Periodically refresh the page to pick up fresh data (skips if user is interacting)
+    scheduleAutoRefresh() {
+        const REFRESH_MS = 10 * 60 * 1000; // 10 minutes
+        if (this.autoRefreshInterval) {
+            clearInterval(this.autoRefreshInterval);
+        }
+        this.autoRefreshInterval = setInterval(() => {
+            if (document.hidden) {return;}
+            if (this.activeModal) {return;}
+            window.location.reload();
+        }, REFRESH_MS);
     }
 
     // Persistent error banner for analytics status
