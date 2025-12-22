@@ -49,6 +49,18 @@ const insightsCache = {
 const MANUAL_REFRESH_COOLDOWN_MS = config.DEEPSEEK.REFRESH_COOLDOWN_MS;
 let lastManualRefreshAt = 0;
 
+function getEventDaysCount(events) {
+  const days = new Set();
+  events.forEach(evt => {
+    const ts = evt.timestamp || evt.sleep_start_time || evt.sleep_end_time;
+    if (!ts) {return;}
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) {return;}
+    days.add(d.toISOString().slice(0, 10));
+  });
+  return days.size;
+}
+
 // Generate cache key from goal/concerns
 function getInsightsCacheKey(goal, concerns) {
   const normalizedGoal = (goal || '').trim().toLowerCase();
@@ -115,6 +127,62 @@ function isInsightsCacheStale() {
   );
   const ttl = hasError ? INSIGHTS_FAILURE_TTL_MS : INSIGHTS_CACHE_TTL_MS;
   return cacheAgeMs > ttl;
+}
+
+function buildActionPlans(aiEnhanced, analytics = null) {
+  const insights = aiEnhanced?.insights || [];
+  const plans = insights.slice(0, 3).map((insight, idx) => ({
+    title: insight.title || `Focus ${idx + 1}`,
+    steps: [
+      insight.recommendation || insight.description || 'Monitor and adjust as needed.'
+    ],
+    priority: insight.priority || 3
+  }));
+
+  // Add a schedule nudge if available
+  if (aiEnhanced?.miniPlan?.tonightBedtimeTarget) {
+    plans.unshift({
+      title: 'Tonight’s Plan',
+      steps: [
+        `Bedtime target: ${aiEnhanced.miniPlan.tonightBedtimeTarget}`,
+        ...(aiEnhanced.miniPlan.nextWakeWindows || [])
+      ],
+      priority: 2
+    });
+  } else if (analytics?.sleepQuality?.recommendedHours) {
+    plans.push({
+      title: 'Sleep baseline',
+      steps: [`Aim for ${analytics.sleepQuality.recommendedHours}h total today.`],
+      priority: 3
+    });
+  }
+
+  return plans.slice(0, 4);
+}
+
+function buildAlertExplanations(realtimeAlerts = []) {
+  return realtimeAlerts.map(alert => ({
+    title: alert.title || 'Alert',
+    explanation: alert.message || alert.note || 'Check recent events.',
+    severity: alert.severity || 'info'
+  }));
+}
+
+function buildScheduleSuggestion(aiEnhanced, analytics = null) {
+  if (aiEnhanced?.miniPlan) {
+    return {
+      bedtime: aiEnhanced.miniPlan.tonightBedtimeTarget || '',
+      wakeWindows: aiEnhanced.miniPlan.nextWakeWindows || [],
+      feedingNote: aiEnhanced.miniPlan.feedingNote || ''
+    };
+  }
+
+  const wakeWindows = analytics?.sleepQuality?.wakeWindows || [];
+  return {
+    bedtime: '',
+    wakeWindows,
+    feedingNote: ''
+  };
 }
 
 async function checkDeepSeekHealth() {
@@ -212,7 +280,8 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
           logger.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
           return { profile: null, latestMeasurement: null };
         }
-      })()
+      })(),
+      buildAnalytics().then(() => null).catch(() => null) // placeholder to keep Promise.all shape
     ]);
     const { profile, latestMeasurement } = profileData;
     logger.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
@@ -248,13 +317,20 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
     const realtimeAlerts = patternDetector.detectAnomalies();
     logger.log(`[AI Insights] Real-time alerts detected: ${realtimeAlerts.length}`);
 
+    const analytics = buildAnalytics ? await buildAnalytics(events, HOME_TIMEZONE) : null;
+
     const payload = {
       success: true,
       ...insights,
       realtimeAlerts, // Immediate safety alerts (no AI)
       generatedAt: new Date().toISOString(),
       ageUsed: ageWeeks,
-      reason
+      reason,
+      actionPlans: buildActionPlans(insights.aiEnhanced, analytics),
+      alertExplanations: buildAlertExplanations(realtimeAlerts),
+      scheduleSuggestion: buildScheduleSuggestion(insights.aiEnhanced, analytics),
+      dataQuality: insights.dataQuality,
+      weeklyTrends: analytics?.weeklyTrends || null
     };
 
     insightsCache.payload = payload;
@@ -270,7 +346,11 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
       error: isAuthError ? 'DeepSeek API key rejected or unauthorized' : 'AI insights temporarily unavailable',
       message: isAuthError ? 'Please check DEEPSEEK_API_KEY and permissions' : 'Please try again later',
       generatedAt: new Date().toISOString(),
-      authError: isAuthError
+      authError: isAuthError,
+      actionPlans: [],
+      alertExplanations: [],
+      scheduleSuggestion: null,
+      dataQuality: null
     };
     insightsCache.payload = payload;
     insightsCache.generatedAt = payload.generatedAt;
@@ -399,6 +479,77 @@ app.get('/api/ai-insights/health', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'AI health check failed'
+    });
+  }
+});
+
+// Grounded Q&A endpoint
+app.get('/api/ai-insights/ask', async (req, res) => {
+  try {
+    const question = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (!question) {
+      return res.status(400).json({ success: false, error: 'Query parameter q is required' });
+    }
+
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ success: false, error: 'AI not configured' });
+    }
+
+    const events = await Event.getAll();
+    const analytics = await buildAnalytics(events, HOME_TIMEZONE);
+    const dataQuality = {
+      days: getEventDaysCount(events),
+      totalEvents: events.length,
+      hasSufficientData: events.length >= 20
+    };
+
+    const summary = {
+      feeding: analytics?.feedingIntelligence || null,
+      sleep: analytics?.sleepQuality || null,
+      diaper: analytics?.diaperHealth || null,
+      smartAlerts: analytics?.smartAlerts || [],
+      weeklyTrends: analytics?.weeklyTrends || null
+    };
+
+    const systemPrompt = [
+      'You are a concise baby-tracking assistant.',
+      'Use ONLY the provided stats; do not guess missing data.',
+      'Be brief (<=120 words), use bullets when helpful.',
+      'Surface concrete numbers and trends; avoid generic advice.',
+      'If data is insufficient, say so.'
+    ].join(' ');
+
+    const userContent = `Question: ${question}\n\nContext (JSON): ${JSON.stringify(summary).slice(0, 4000)}`;
+
+    const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent }
+      ],
+      max_tokens: 350,
+      temperature: 0.2
+    }, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const answer = response?.data?.choices?.[0]?.message?.content || 'No answer available';
+    res.json({
+      success: true,
+      answer,
+      dataQuality
+    });
+  } catch (error) {
+    console.error('AI ask endpoint error:', error.message);
+    res.status(503).json({
+      success: false,
+      error: 'AI question failed',
+      details: error.message
     });
   }
 });

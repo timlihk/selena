@@ -2396,3 +2396,74 @@ body.has-sleep-banner {
         transform: scale(0.95);
     }
 }
+
+/* AI ask & action plans */
+.ask-ai {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid var(--card-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--card-bg, #f9fafb);
+}
+
+.ask-ai .ask-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ask-ai input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--card-border, #e5e7eb);
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary, #111827);
+}
+
+.ask-answer {
+    min-height: 24px;
+    font-size: 14px;
+    color: var(--text-muted, #4b5563);
+}
+
+.action-plans {
+    margin-top: 12px;
+}
+
+.plan-card {
+    border: 1px solid var(--card-border, #e5e7eb);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: var(--card-bg, #f9fafb);
+}
+
+.plan-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.plan-title {
+    font-weight: 600;
+}
+
+.plan-priority {
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.plan-card ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.plan-card li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}

@@ -1082,6 +1082,34 @@ class BabyTracker {
         }, REFRESH_MS);
     }
 
+    async submitAskQuestion(inputEl, answerEl) {
+        const question = inputEl.value.trim();
+        if (!question) {
+            this.showWarning('Enter a question first.');
+            return;
+        }
+        if (answerEl) {
+            answerEl.textContent = '🤖 Thinking...';
+        }
+        try {
+            const response = await fetch(`/api/ai-insights/ask?q=${encodeURIComponent(question)}`);
+            if (!response.ok) {
+                throw new Error('AI unavailable');
+            }
+            const data = await response.json();
+            if (data.success && data.answer) {
+                answerEl.innerHTML = data.answer.replace(/\n/g, '<br>');
+            } else {
+                answerEl.textContent = data.error || 'No answer available.';
+            }
+        } catch (error) {
+            console.error('Ask AI failed:', error);
+            if (answerEl) {
+                answerEl.textContent = 'AI is unavailable right now.';
+            }
+        }
+    }
+
     // Persistent error banner for analytics status
     showErrorBanner(message) {
         let banner = document.getElementById('errorBanner');
@@ -2186,6 +2214,8 @@ class BabyTracker {
 
     renderAIInsightsOnly(aiInsights, container) {
         const aiItems = aiInsights?.aiEnhanced?.insights || aiInsights?.insights || [];
+        const actionPlans = aiInsights?.actionPlans || aiInsights?.aiEnhanced?.actionPlans || [];
+        const schedule = aiInsights?.scheduleSuggestion || aiInsights?.aiEnhanced?.scheduleSuggestion || null;
 
         if (!aiInsights || !aiInsights.success || aiItems.length === 0) {
             const errorMsg = aiInsights?.error || 'AI insights unavailable right now.';
@@ -2218,11 +2248,47 @@ class BabyTracker {
             `;
         }).join('');
 
+        const actionPlanHtml = actionPlans.length > 0 ? `
+            <div class="action-plans">
+                <h4>🗺️ Action Plans</h4>
+                ${actionPlans.map(plan => `
+                    <div class="plan-card">
+                        <div class="plan-header">
+                            <span class="plan-title">${this.escapeHtml(plan.title || 'Plan')}</span>
+                            ${plan.priority ? `<span class="plan-priority">P${plan.priority}</span>` : ''}
+                        </div>
+                        <ul>
+                            ${(plan.steps || []).map(step => `<li>${this.escapeHtml(step)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('')}
+            </div>
+        ` : '';
+
+        const scheduleHtml = schedule ? `
+            <div class="schedule-card">
+                <h4>⏰ Suggested Schedule</h4>
+                ${schedule.bedtime ? `<div class="intel-row"><span class="intel-label">Bedtime:</span><span class="intel-value">${this.escapeHtml(schedule.bedtime)}</span></div>` : ''}
+                ${schedule.wakeWindows && schedule.wakeWindows.length ? `<div class="intel-row"><span class="intel-label">Next wake windows:</span><span class="intel-value">${schedule.wakeWindows.map(w => this.escapeHtml(w)).join(', ')}</span></div>` : ''}
+                ${schedule.feedingNote ? `<div class="intel-row"><span class="intel-label">Feeding:</span><span class="intel-value">${this.escapeHtml(schedule.feedingNote)}</span></div>` : ''}
+            </div>
+        ` : '';
+
         container.innerHTML = `
             <div class="intelligence-card">
                 <h3>🎯 Adaptive Parenting Coach</h3>
                 <div class="coach-insights">
                     ${insightsHtml}
+                </div>
+                ${actionPlanHtml}
+                ${scheduleHtml}
+                <div class="ask-ai">
+                    <h4>❓ Ask a question</h4>
+                    <div class="ask-row">
+                        <input id="askQuestionInput" type="text" placeholder="e.g., How were naps this week?" />
+                        <button id="askQuestionBtn" class="btn-secondary">Ask AI</button>
+                    </div>
+                    <div id="askAnswer" class="ask-answer"></div>
                 </div>
                 ${aiInsights?.dataQuality ? `
                     <div class="data-quality">
@@ -2231,6 +2297,20 @@ class BabyTracker {
                 ` : ''}
             </div>
         `;
+
+        // Wire ask input
+        const askBtn = container.querySelector('#askQuestionBtn');
+        const askInput = container.querySelector('#askQuestionInput');
+        const askAnswer = container.querySelector('#askAnswer');
+        if (askBtn && askInput) {
+            askBtn.addEventListener('click', () => this.submitAskQuestion(askInput, askAnswer));
+            askInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.submitAskQuestion(askInput, askAnswer);
+                }
+            });
+        }
     }
 
     // Helper to format minutes as "Xh Ym"
@@ -2491,10 +2571,11 @@ class BabyTracker {
         const alertsHtml = alerts.map(alert => {
             const severityClass = alert.severity === 'alert' ? 'alert-critical' :
                                  alert.severity === 'warning' ? 'alert-warning' : 'alert-info';
+            const explanation = alert.explanation ? `title="${this.escapeHtml(alert.explanation)}"` : '';
             return `
                 <div class="alert-item ${severityClass}">
                     <span class="alert-icon">${this.escapeHtml(alert.icon)}</span>
-                    <span class="alert-message">${this.escapeHtml(alert.message)}</span>
+                    <span class="alert-message" ${explanation}>${this.escapeHtml(alert.message)}</span>
                 </div>
             `;
         }).join('');
