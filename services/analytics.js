@@ -336,17 +336,107 @@ function calculateSmartAlerts(feedingIntel, diaperHealth, sleepQuality) {
   return alerts;
 }
 
+/**
+ * Calculate week-over-week trends comparing this week to last week
+ * Returns direction (up/down/stable), percentage change, and raw values
+ */
+function calculateWeeklyTrends(events, timeZone) {
+  const now = new Date();
+  const oneWeekAgo = subDays(now, 7);
+  const twoWeeksAgo = subDays(now, 14);
+
+  // Get events for each week
+  const thisWeekStart = getDayBounds(oneWeekAgo, timeZone).start;
+  const thisWeekEnd = getDayBounds(now, timeZone).end;
+  const lastWeekStart = getDayBounds(twoWeeksAgo, timeZone).start;
+  const lastWeekEnd = getDayBounds(oneWeekAgo, timeZone).start;
+
+  const thisWeekEvents = getEventsForRange(events, thisWeekStart, thisWeekEnd);
+  const lastWeekEvents = getEventsForRange(events, lastWeekStart, lastWeekEnd);
+
+  // Helper to calculate trend
+  // sentiment: 'positive' (higher is good), 'negative' (lower is good), 'neutral' (no judgment)
+  const calcTrend = (thisVal, lastVal, unit, sentiment = 'positive') => {
+    if (lastVal === null || lastVal === 0 || thisVal === null) {
+      return { direction: 'stable', change: 0, thisWeek: thisVal, lastWeek: lastVal, unit, hasData: false, isNeutral: true };
+    }
+    const pctChange = ((thisVal - lastVal) / lastVal) * 100;
+    let direction = 'stable';
+    if (pctChange > 5) direction = 'up';
+    else if (pctChange < -5) direction = 'down';
+
+    // Determine sentiment based on direction and metric type
+    let isPositive = null;
+    let isNeutral = false;
+    if (sentiment === 'neutral') {
+      isNeutral = true;
+    } else if (sentiment === 'positive') {
+      isPositive = direction === 'up';
+    } else {
+      isPositive = direction === 'down';
+    }
+
+    return {
+      direction,
+      change: Math.round(pctChange),
+      thisWeek: Math.round(thisVal * 10) / 10,
+      lastWeek: Math.round(lastVal * 10) / 10,
+      unit,
+      hasData: true,
+      isPositive,
+      isNeutral
+    };
+  };
+
+  // Feeding: average ml per feed
+  const thisWeekMilk = thisWeekEvents.filter(e => e.type === 'milk' && e.amount > 0);
+  const lastWeekMilk = lastWeekEvents.filter(e => e.type === 'milk' && e.amount > 0);
+  const thisWeekAvgMl = thisWeekMilk.length > 0
+    ? thisWeekMilk.reduce((sum, e) => sum + e.amount, 0) / thisWeekMilk.length
+    : null;
+  const lastWeekAvgMl = lastWeekMilk.length > 0
+    ? lastWeekMilk.reduce((sum, e) => sum + e.amount, 0) / lastWeekMilk.length
+    : null;
+
+  // Sleep: average hours per day
+  const thisWeekSleep = thisWeekEvents.filter(e => e.type === 'sleep' && e.amount > 0);
+  const lastWeekSleep = lastWeekEvents.filter(e => e.type === 'sleep' && e.amount > 0);
+  const thisWeekSleepMin = thisWeekSleep.reduce((sum, e) => sum + e.amount, 0);
+  const lastWeekSleepMin = lastWeekSleep.reduce((sum, e) => sum + e.amount, 0);
+  const thisWeekSleepHrsPerDay = thisWeekSleepMin / 60 / 7;
+  const lastWeekSleepHrsPerDay = lastWeekSleepMin / 60 / 7;
+
+  // Diapers: changes per day
+  const thisWeekDiapers = thisWeekEvents.filter(e => e.type === 'diaper' || e.type === 'poo');
+  const lastWeekDiapers = lastWeekEvents.filter(e => e.type === 'diaper' || e.type === 'poo');
+  const thisWeekDiapersPerDay = thisWeekDiapers.length / 7;
+  const lastWeekDiapersPerDay = lastWeekDiapers.length / 7;
+
+  return {
+    feeding: calcTrend(thisWeekAvgMl, lastWeekAvgMl, 'ml', 'positive'),     // More milk = good
+    sleep: calcTrend(thisWeekSleepHrsPerDay, lastWeekSleepHrsPerDay, 'hrs/day', 'positive'), // More sleep = good
+    diapers: calcTrend(thisWeekDiapersPerDay, lastWeekDiapersPerDay, '/day', 'neutral'),    // No judgment
+    dataQuality: {
+      thisWeekEvents: thisWeekEvents.length,
+      lastWeekEvents: lastWeekEvents.length,
+      hasSufficientData: lastWeekEvents.length >= 20
+    }
+  };
+}
+
 function buildAnalytics(events, timeZone) {
   const feedingIntelligence = calculateFeedingIntelligence(events, timeZone);
   const sleepQuality = calculateSleepQuality(events, timeZone);
   const diaperHealth = calculateDiaperHealth(events, timeZone);
   const smartAlerts = calculateSmartAlerts(feedingIntelligence, diaperHealth, sleepQuality);
+  const weeklyTrends = calculateWeeklyTrends(events, timeZone);
 
   return {
     feedingIntelligence,
     sleepQuality,
     diaperHealth,
-    smartAlerts
+    smartAlerts,
+    weeklyTrends
   };
 }
 

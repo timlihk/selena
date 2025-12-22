@@ -593,6 +593,50 @@ body.light-mode {
     color: white;
 }
 
+/* Trend badges for week-over-week indicators */
+.trend-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+    cursor: help;
+}
+
+.trend-badge.trend-positive {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.trend-badge.trend-negative {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.trend-badge.trend-stable {
+    background: rgba(107, 114, 128, 0.15);
+    color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+    .trend-badge.trend-positive {
+        background: rgba(16, 185, 129, 0.25);
+        color: #34d399;
+    }
+
+    .trend-badge.trend-negative {
+        background: rgba(239, 68, 68, 0.25);
+        color: #f87171;
+    }
+
+    .trend-badge.trend-stable {
+        background: rgba(156, 163, 175, 0.25);
+        color: #9ca3af;
+    }
+}
+
 .no-data {
     text-align: center;
     color: var(--text-secondary);

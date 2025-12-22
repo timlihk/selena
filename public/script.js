@@ -1088,6 +1088,36 @@ class BabyTracker {
     }
 
     /**
+     * Render a trend badge showing week-over-week change
+     * @param {Object} trend - Trend data from weeklyTrends
+     * @returns {string} HTML for the trend badge
+     */
+    renderTrendBadge(trend) {
+        if (!trend || !trend.hasData) {
+            return '';
+        }
+
+        const arrow = trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→';
+
+        // Determine color: neutral metrics always gray, otherwise based on isPositive
+        let colorClass;
+        if (trend.direction === 'stable' || trend.isNeutral) {
+            colorClass = 'trend-stable';
+        } else {
+            colorClass = trend.isPositive ? 'trend-positive' : 'trend-negative';
+        }
+
+        const changeText = trend.direction === 'stable' ? 'stable' : `${Math.abs(trend.change)}%`;
+
+        // Build tooltip with clear unit labels
+        const thisWeekLabel = `${trend.thisWeek}${trend.unit}`;
+        const lastWeekLabel = `${trend.lastWeek}${trend.unit}`;
+        const tooltip = `Week-over-week: ${lastWeekLabel} → ${thisWeekLabel}`;
+
+        return `<span class="trend-badge ${colorClass}" title="${tooltip}">${arrow} ${changeText}</span>`;
+    }
+
+    /**
      * Show a custom confirmation modal (replaces browser confirm())
      * @param {string} message - The confirmation message
      * @param {Object} options - Optional settings
@@ -1927,9 +1957,12 @@ class BabyTracker {
             ? `${Math.abs(intelligence.minutesUntilNext)} min overdue`
             : `~${intelligence.minutesUntilNext} min`;
 
+        const feedingTrend = this.analytics?.weeklyTrends?.feeding;
+        const trendBadge = this.renderTrendBadge(feedingTrend);
+
         container.innerHTML = `
             <div class="intelligence-card">
-                <h3>🍼 Feeding Intelligence</h3>
+                <h3>🍼 Feeding Intelligence ${trendBadge}</h3>
                 <div class="intel-row">
                     <span class="intel-label">Last fed:</span>
                     <span class="intel-value">${intelligence.hoursSince}h ${intelligence.minutesSince}m ago</span>
@@ -1984,9 +2017,12 @@ class BabyTracker {
                     </div>`).join('');
         }
 
+        const sleepTrend = this.analytics?.weeklyTrends?.sleep;
+        const trendBadge = this.renderTrendBadge(sleepTrend);
+
         container.innerHTML = `
             <div class="intelligence-card">
-                <h3>😴 Sleep Quality</h3>
+                <h3>😴 Sleep Quality ${trendBadge}</h3>
                 <div class="intel-row">
                     <span class="intel-label">Total today:</span>
                     <span class="intel-value">${quality.totalHours}h (${quality.sleepPercentage}% of ${quality.recommendedHours}h)</span>
@@ -2376,9 +2412,12 @@ class BabyTracker {
         const peeAlert = health.noPeeAlert ? '<span class="alert-badge">Dehydration risk</span>' : '✅';
         const pooAlert = health.noPooAlert ? '<span class="alert-badge">Monitor</span>' : '✅';
 
+        const diaperTrend = this.analytics?.weeklyTrends?.diapers;
+        const trendBadge = this.renderTrendBadge(diaperTrend);
+
         container.innerHTML = `
             <div class="intelligence-card">
-                <h3>💩 Diaper Health</h3>
+                <h3>💩 Diaper Health ${trendBadge}</h3>
                 <div class="intel-row">
                     <span class="intel-label">Today:</span>
                     <span class="intel-value">${health.totalChanges} changes (${health.peeCount} pee, ${health.pooCount} poo${health.bothCount > 0 ? `, ${health.bothCount} both` : ''})</span>
