@@ -17,7 +17,14 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.5.2 (Latest)
+### v1.5.6 (Latest)
+- **Ask AI**: New Q&A feature - ask questions like "How were naps this week?" and get grounded answers based on your data
+- **Action Plans**: AI insights now include prioritized action items with concrete steps
+- **Schedule Suggestions**: Tonight's bedtime target and recommended wake windows surfaced from AI
+- **Week-over-Week Trends**: Visual trend indicators (↑↓→) on Feeding, Sleep, and Diaper cards
+- **Auto-Refresh**: Page automatically refreshes every 10 minutes (skips if modal open or page hidden)
+
+### v1.5.2
 - **Analytics Resilience**: Server-hosted timezone libraries and better user messaging when analytics fetch fails.
 - **Backend Modularization**: Routes/services split for events, profile, and analytics; added reproducible vendor bundling.
 
@@ -162,10 +169,16 @@ Notes:
 ### AI Insights
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/ai-insights` | Get AI-enhanced insights |
+| GET | `/api/ai-insights` | Get AI-enhanced insights with action plans and schedule |
 | GET | `/api/ai-insights?force=1` | Force refresh AI insights |
 | GET | `/api/ai-insights/health` | Check DeepSeek API status |
+| GET | `/api/ai-insights/ask?q=...` | Ask a question about your data |
 | POST | `/api/ai-insights/refresh` | Manual refresh (requires token) |
+
+### Analytics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/analytics/today` | Get today's feeding, sleep, diaper analytics with weekly trends |
 
 ## AI Features
 
@@ -174,6 +187,7 @@ The Adaptive Parenting Coach provides:
 1. **Statistical Analysis** (always available)
    - Sleep pattern detection (best times, wake windows)
    - Feeding correlations
+   - Week-over-week trend indicators (↑↓→)
    - Z-score based confidence levels
 
 2. **DeepSeek AI Analysis** (requires API key)
@@ -183,8 +197,19 @@ The Adaptive Parenting Coach provides:
    - Growth milestone tracking
    - Alert detection for potential concerns
 
+3. **Action Plans** (AI-powered)
+   - Prioritized action items extracted from insights
+   - Tonight's bedtime target and wake windows
+   - Concrete steps with priority levels (P1-P5)
+
+4. **Ask AI** (Q&A feature)
+   - Ask questions like "How were naps this week?"
+   - Grounded answers using only your actual data
+   - Concise responses (≤120 words) with concrete numbers
+
 ### AI Requirements
-- Minimum 14 days of tracking data
+- Minimum 10 days of tracking data for AI insights
+- Minimum 14 days for week-over-week trends
 - Valid `DEEPSEEK_API_KEY` environment variable
 - Active DeepSeek account with credits
 
