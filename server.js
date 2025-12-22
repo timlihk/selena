@@ -280,8 +280,7 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
           logger.log('[AI Insights] Unable to load profile/measurement:', profileErr.message);
           return { profile: null, latestMeasurement: null };
         }
-      })(),
-      buildAnalytics().then(() => null).catch(() => null) // placeholder to keep Promise.all shape
+      })()
     ]);
     const { profile, latestMeasurement } = profileData;
     logger.log(`[AI Insights] Events: ${events.length}, Age: ${ageWeeks} weeks`);
