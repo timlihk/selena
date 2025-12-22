@@ -17,7 +17,10 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.5.9 (Latest)
+### v1.5.10 (Latest)
+- **Dark Mode Fix**: Added missing `--card-bg` and `--card-border` CSS variables for proper dark mode contrast.
+
+### v1.5.9
 - **AI Enhancements**: Action plans, schedule suggestions, alert explanations, grounded Q&A with rate-limit and cache.
 - **Sleep Accuracy**: Sleep minutes are clamped to day boundaries to handle cross-midnight sessions.
 - **UI Resilience**: Dark-mode tweaks for AI cards and safer analytics fallbacks; auto-refresh every 10 minutes (skips if modal open or hidden).

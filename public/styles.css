@@ -62,6 +62,10 @@ body {
         --timeline-bg: #2d3748;
         --timeline-line: #4a5568;
         --timeline-hour-bg: #374151;
+
+        /* Ensure cards/inputs contrast in dark mode */
+        --card-bg: #2d3748;
+        --card-border: #4a5568;
     }
 }
 
