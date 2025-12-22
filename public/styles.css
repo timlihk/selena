@@ -2446,11 +2446,11 @@ body.has-sleep-banner {
 }
 
 .plan-card {
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(102, 126, 234, 0.2);
     border-radius: 8px;
     padding: 10px;
     margin-bottom: 8px;
-    background: var(--bg-tertiary);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(102, 126, 234, 0.12) 100%);
 }
 
 .plan-header {

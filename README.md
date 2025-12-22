@@ -17,7 +17,10 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.5.10 (Latest)
+### v1.5.11 (Latest)
+- **UI Polish**: Enhanced action plan card styling with gradient background and branded border color.
+
+### v1.5.10
 - **Dark Mode Fix**: Added missing `--card-bg` and `--card-border` CSS variables for proper dark mode contrast.
 
 ### v1.5.9
