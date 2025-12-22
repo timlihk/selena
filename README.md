@@ -17,7 +17,11 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.5.0 (Latest)
+### v1.5.2 (Latest)
+- **Analytics Resilience**: Server-hosted timezone libraries and better user messaging when analytics fetch fails.
+- **Backend Modularization**: Routes/services split for events, profile, and analytics; added reproducible vendor bundling.
+
+### v1.5.0
 - **Installable PWA**: Added web manifest, app icons, and offline app‑shell caching via service worker.
 
 ### v1.4.3
