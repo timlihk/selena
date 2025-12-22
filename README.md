@@ -17,16 +17,10 @@ A web application to track newborn baby events including feeding, sleep, diapers
 
 ## What's New
 
-### v1.5.6 (Latest)
-- **Ask AI**: New Q&A feature - ask questions like "How were naps this week?" and get grounded answers based on your data
-- **Action Plans**: AI insights now include prioritized action items with concrete steps
-- **Schedule Suggestions**: Tonight's bedtime target and recommended wake windows surfaced from AI
-- **Week-over-Week Trends**: Visual trend indicators (↑↓→) on Feeding, Sleep, and Diaper cards
-- **Auto-Refresh**: Page automatically refreshes every 10 minutes (skips if modal open or page hidden)
-
-### v1.5.2
-- **Analytics Resilience**: Server-hosted timezone libraries and better user messaging when analytics fetch fails.
-- **Backend Modularization**: Routes/services split for events, profile, and analytics; added reproducible vendor bundling.
+### v1.5.9 (Latest)
+- **AI Enhancements**: Action plans, schedule suggestions, alert explanations, grounded Q&A with rate-limit and cache.
+- **Sleep Accuracy**: Sleep minutes are clamped to day boundaries to handle cross-midnight sessions.
+- **UI Resilience**: Dark-mode tweaks for AI cards and safer analytics fallbacks; auto-refresh every 10 minutes (skips if modal open or hidden).
 
 ### v1.5.0
 - **Installable PWA**: Added web manifest, app icons, and offline app‑shell caching via service worker.

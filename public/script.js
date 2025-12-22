@@ -2248,7 +2248,7 @@ class BabyTracker {
             `;
         }).join('');
 
-        const actionPlanHtml = actionPlans.length > 0 ? `
+        const actionPlanHtml = actionPlans && actionPlans.length > 0 ? `
             <div class="action-plans">
                 <h4>🗺️ Action Plans</h4>
                 ${actionPlans.map(plan => `
@@ -2265,7 +2265,8 @@ class BabyTracker {
             </div>
         ` : '';
 
-        const scheduleHtml = schedule ? `
+        const hasSchedule = schedule && (schedule.bedtime || (schedule.wakeWindows && schedule.wakeWindows.length) || schedule.feedingNote);
+        const scheduleHtml = hasSchedule ? `
             <div class="schedule-card">
                 <h4>⏰ Suggested Schedule</h4>
                 ${schedule.bedtime ? `<div class="intel-row"><span class="intel-label">Bedtime:</span><span class="intel-value">${this.escapeHtml(schedule.bedtime)}</span></div>` : ''}

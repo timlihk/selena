@@ -265,8 +265,8 @@ async function generateAndCacheInsights(reason = 'on-demand', options = {}) {
   logger.log(`[AI Insights] Generating insights (reason: ${reason}), API key present: ${!!apiKey}, key prefix: ${apiKey ? `${apiKey.substring(0, 8)  }...` : 'none'}`);
 
   try {
-    // Parallel fetch for better performance
-    const [events, ageWeeks, profileData] = await Promise.all([
+  // Parallel fetch for better performance
+  const [events, ageWeeks, profileData] = await Promise.all([
       Event.getAll(),
       getBabyAgeWeeks(parseInt(process.env.DEFAULT_BABY_AGE_WEEKS || '8', 10)),
       (async () => {
@@ -413,9 +413,34 @@ app.get('/api/ai-insights', async (req, res) => {
 
     logger.log(`[AI Insights] force=${forceRefresh}, cached=${!!insightsCache.payload}, stale=${isInsightsCacheStale()}, cacheKeyMatch=${insightsCache.cacheKey === cacheKey}, shouldRegenerate=${shouldRegenerate}`);
 
-    const payload = shouldRegenerate
+    let payload = shouldRegenerate
       ? await generateAndCacheInsights('api', { goal, concerns })
       : insightsCache.payload;
+
+    // Merge alert explanations into smartAlerts for tooltip rendering
+    if (payload?.alertExplanations && Array.isArray(payload.alertExplanations) && Array.isArray(payload.smartAlerts)) {
+      const explanationsMap = new Map();
+      payload.alertExplanations.forEach(item => {
+        const titleKey = (item.title || '').toLowerCase();
+        const typeKey = (item.type || '').toLowerCase();
+        const messageKey = (item.message || '').toLowerCase();
+        if (titleKey) {explanationsMap.set(`title:${titleKey}`, item.explanation);}
+        if (typeKey) {explanationsMap.set(`type:${typeKey}`, item.explanation);}
+        if (messageKey) {explanationsMap.set(`msg:${messageKey}`, item.explanation);}
+      });
+
+      payload.smartAlerts = payload.smartAlerts.map(alert => {
+        if (alert.explanation) {return alert;}
+        const titleKey = `title:${(alert.title || '').toLowerCase()}`;
+        const typeKey = `type:${(alert.type || '').toLowerCase()}`;
+        const messageKey = `msg:${(alert.message || '').toLowerCase()}`;
+        const explanation = explanationsMap.get(titleKey) ||
+          explanationsMap.get(typeKey) ||
+          explanationsMap.get(messageKey) ||
+          null;
+        return { ...alert, explanation };
+      });
+    }
 
     res.status(payload && payload.success ? 200 : 503).json(payload);
   } catch (error) {
@@ -490,6 +515,35 @@ app.get('/api/ai-insights/ask', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Query parameter q is required' });
     }
 
+    // Simple per-process rate limit: max 5 per minute
+    const now = Date.now();
+    if (!app.locals.askHistory) {
+      app.locals.askHistory = [];
+    }
+    app.locals.askHistory = app.locals.askHistory.filter(ts => now - ts < 60_000);
+    if (app.locals.askHistory.length >= 5) {
+      return res.status(429).json({ success: false, error: 'Too many questions, please wait a minute.' });
+    }
+    app.locals.askHistory.push(now);
+
+    // Per-process cache for identical questions within 10 minutes
+    if (!app.locals.askCache) {
+      app.locals.askCache = new Map();
+    }
+    // Drop stale cache entries to prevent unbounded growth
+    const tenMinutesMs = 10 * 60 * 1000;
+    for (const [key, value] of app.locals.askCache.entries()) {
+      if (now - value.cachedAt >= tenMinutesMs) {
+        app.locals.askCache.delete(key);
+      }
+    }
+
+    const cacheKey = question.toLowerCase();
+    const cached = app.locals.askCache.get(cacheKey);
+    if (cached && (now - cached.cachedAt) < tenMinutesMs) {
+      return res.json(cached.payload);
+    }
+
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ success: false, error: 'AI not configured' });
@@ -538,11 +592,13 @@ app.get('/api/ai-insights/ask', async (req, res) => {
     });
 
     const answer = response?.data?.choices?.[0]?.message?.content || 'No answer available';
-    res.json({
+    const payload = {
       success: true,
       answer,
       dataQuality
-    });
+    };
+    app.locals.askCache.set(cacheKey, { cachedAt: now, payload });
+    res.json(payload);
   } catch (error) {
     console.error('AI ask endpoint error:', error.message);
     res.status(503).json({
