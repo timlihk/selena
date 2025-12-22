@@ -72,6 +72,7 @@ class BabyTracker {
         this.activeSleepSessions = [];
         this.activeModal = null;
         this.lastFocusedElement = null;
+        this.analyticsErrorNotified = false;
         this.modalKeydownHandler = (e) => this.handleModalKeydown(e);
         this.confirmModalOpen = false;
         window.addEventListener('beforeunload', () => {
@@ -1619,9 +1620,27 @@ class BabyTracker {
                 this.updateSmartAlerts(data.smartAlerts);
             }
             this.hideErrorBanner();
+            this.analyticsErrorNotified = false;
         } catch (error) {
             console.error('Failed to refresh analytics:', error);
-            this.showErrorBanner('Analytics may be stale');
+            if (!this.analyticsErrorNotified) {
+                this.showWarning('Analytics may be stale; retrying soon.');
+                this.showErrorBanner('Analytics may be stale; retrying soon.');
+                this.analyticsErrorNotified = true;
+            }
+            // Fall back to client-side calculations so UI stays fresh
+            this.updateFeedingIntelligence();
+            this.updateSleepQuality();
+            if (typeof this.updateDiaperHealth === 'function') {
+                this.updateDiaperHealth();
+            }
+            if (typeof this.updateSmartAlerts === 'function') {
+                this.updateSmartAlerts();
+            }
+            // Lightweight retry after delay
+            setTimeout(() => {
+                this.refreshAnalyticsFromServer();
+            }, 15000);
         }
     }
 
@@ -1844,9 +1863,11 @@ class BabyTracker {
     }
 
     getDayBoundsInTimezone(date, timeZone) {
-        const zoned = dateFnsTz.utcToZonedTime(date, timeZone);
-        const start = dateFnsTz.zonedTimeToUtc(dateFns.startOfDay(zoned), timeZone);
-        const end = dateFnsTz.zonedTimeToUtc(dateFns.endOfDay(zoned), timeZone);
+        const toZoned = dateFnsTz.toZonedTime || dateFnsTz.utcToZonedTime;
+        const fromZoned = dateFnsTz.fromZonedTime || dateFnsTz.zonedTimeToUtc;
+        const zoned = toZoned(date, timeZone);
+        const start = fromZoned(dateFns.startOfDay(zoned), timeZone);
+        const end = fromZoned(dateFns.endOfDay(zoned), timeZone);
         return { start, end };
     }
 

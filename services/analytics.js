@@ -1,5 +1,7 @@
 const { startOfDay, endOfDay, subDays } = require('date-fns');
-const { utcToZonedTime, zonedTimeToUtc } = require('date-fns-tz');
+const tz = require('date-fns-tz');
+const utcToZonedTime = tz.utcToZonedTime || tz.toZonedTime;
+const zonedTimeToUtc = tz.zonedTimeToUtc || tz.fromZonedTime;
 
 function getDayBounds(date, timeZone) {
   const zoned = utcToZonedTime(date, timeZone);
