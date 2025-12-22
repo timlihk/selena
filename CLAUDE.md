@@ -37,7 +37,12 @@ A web application to track newborn baby events (feeding, sleep, diapers, baths) 
 ## Key Files
 
 ### Backend
-- `server.js` - Express server, API routes, AI insights orchestration
+- `server.js` - Express server wiring, AI insights orchestration, routers
+- `routes/events.js` - Event CRUD, stats, active sleep, auto-completion
+- `routes/profile.js` - Baby profile and measurements endpoints
+- `services/analytics.js` - Server-side analytics (feeding/sleep/diaper/alerts)
+- `lib/validation.js` - Shared validation helpers
+- `lib/logger.js` / `lib/apiError.js` - Logging and API error helpers
 - `database.js` - PostgreSQL queries, BabyProfile model, in-memory fallback
 - `deepseek_analyzer.js` - DeepSeek AI integration, pattern extraction, prompt building
 
@@ -95,8 +100,9 @@ DEFAULT_BABY_AGE_WEEKS # Fallback age if no profile (default: 8)
 ### Sleep
 - `GET /api/sleep/active` - Get active (incomplete) sleep sessions
 
-### Statistics
+### Statistics & Analytics
 - `GET /api/stats/today` - Get today's aggregated statistics
+- `GET /api/analytics/today` - Server-side feeding, sleep, diaper health, and smart alerts analytics (timezone-aware; client can fall back to local calculations if unavailable)
 
 ### Baby Profile
 - `GET /api/baby-profile` - Get profile with age calculation & latest measurement

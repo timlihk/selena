@@ -1,3 +1,4 @@
+/* global dateFns, dateFnsTz */
 class BabyTracker {
     constructor() {
         // Event configuration constants
@@ -65,6 +66,7 @@ class BabyTracker {
         this.defaultHomeTimezone = 'Asia/Hong_Kong';
         this.homeTimezone = this.defaultHomeTimezone;
         this.cachedAIInsights = null;
+        this.analytics = null;
         this.profileAutoSaveTimer = null;
         this.activeSleepTimer = null;
         this.activeSleepSessions = [];
@@ -1575,15 +1577,31 @@ class BabyTracker {
             this.showError('Unable to load daily stats');
         } finally {
             // Always update intelligent insights even if stats endpoint fails
-            this.updateFeedingIntelligence();
-            this.updateSleepQuality();
+            await this.refreshAnalyticsFromServer();
+            this.updateAdaptiveCoach();
+        }
+    }
+
+    async refreshAnalyticsFromServer() {
+        try {
+            const response = await fetch('/api/analytics/today');
+            if (!response.ok) {
+                throw new Error('Failed to load analytics');
+            }
+            const data = await response.json();
+            this.analytics = data;
+            this.updateFeedingIntelligence(data.feedingIntelligence);
+            this.updateSleepQuality(data.sleepQuality);
             if (typeof this.updateDiaperHealth === 'function') {
-                this.updateDiaperHealth();
+                this.updateDiaperHealth(data.diaperHealth);
             }
             if (typeof this.updateSmartAlerts === 'function') {
-                this.updateSmartAlerts();
+                this.updateSmartAlerts(data.smartAlerts);
             }
-            this.updateAdaptiveCoach();
+            this.hideErrorBanner();
+        } catch (error) {
+            console.error('Failed to refresh analytics:', error);
+            this.showError('Analytics may be stale; retrying soon.');
         }
     }
 
@@ -1740,25 +1758,7 @@ class BabyTracker {
             const date = new Date();
             date.setDate(date.getDate() - i);
 
-            // Get start and end of this day in home timezone
-            const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: this.homeTimezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit'
-            });
-
-            const parts = formatter.formatToParts(date);
-            const year = parseInt(parts.find(p => p.type === 'year').value);
-            const month = parseInt(parts.find(p => p.type === 'month').value);
-            const day = parseInt(parts.find(p => p.type === 'day').value);
-
-            // Create start and end of day
-            const startStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T00:00:00`;
-            const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
-
-            const dayStart = this.parseInTimezone(startStr, this.homeTimezone);
-            const dayEnd = this.parseInTimezone(endStr, this.homeTimezone);
+            const { start: dayStart, end: dayEnd } = this.getDayBoundsInTimezone(date, this.homeTimezone);
 
             // Get sleep events for this day
             const daySleepEvents = this.allEvents.filter(event => {
@@ -1777,14 +1777,14 @@ class BabyTracker {
             } else if (i === 1) {
                 label = 'Yesterday';
             } else {
-                label = `${month}/${day}`;
+                label = `${date.getMonth() + 1}/${date.getDate()}`;
             }
 
             breakdown.push({
                 label,
                 hours: totalHours,
                 sessionCount: daySleepEvents.length,
-                date: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+                date: dateFns.format(date, 'yyyy-MM-dd')
             });
         }
 
@@ -1823,6 +1823,13 @@ class BabyTracker {
         return eventDate >= start && eventDate <= end;
     }
 
+    getDayBoundsInTimezone(date, timeZone) {
+        const zoned = dateFnsTz.utcToZonedTime(date, timeZone);
+        const start = dateFnsTz.zonedTimeToUtc(dateFns.startOfDay(zoned), timeZone);
+        const end = dateFnsTz.zonedTimeToUtc(dateFns.endOfDay(zoned), timeZone);
+        return { start, end };
+    }
+
     // Get today's events in home timezone
     getTodayEvents() {
         const eventsSource = Array.isArray(this.allEvents) && this.allEvents.length
@@ -1832,31 +1839,8 @@ class BabyTracker {
         const filterForRange = (events, start, end) => events.filter(event => this.eventOverlapsRange(event, start, end));
 
         try {
-            const now = new Date();
-
-            // Get the current date in home timezone using proper timezone conversion
-            const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: this.homeTimezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour12: false
-            });
-
-            const parts = formatter.formatToParts(now);
-            const year = parseInt(parts.find(p => p.type === 'year').value);
-            const month = parseInt(parts.find(p => p.type === 'month').value);
-            const day = parseInt(parts.find(p => p.type === 'day').value);
-
-            // Create start of day in home timezone (00:00:00)
-            const startStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T00:00:00`;
-            const todayStart = this.parseInTimezone(startStr, this.homeTimezone);
-
-            // Create end of day in home timezone (23:59:59.999)
-            const endStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:59:59.999`;
-            const todayEnd = this.parseInTimezone(endStr, this.homeTimezone);
-
-            return filterForRange(eventsSource, todayStart, todayEnd);
+            const { start, end } = this.getDayBoundsInTimezone(new Date(), this.homeTimezone);
+            return filterForRange(eventsSource, start, end);
         } catch (error) {
             console.error('Error in getTodayEvents:', error);
             // Fallback to simple date comparison in case of error
@@ -1872,64 +1856,19 @@ class BabyTracker {
 
     // Parse a datetime string in a specific timezone and return UTC Date object
     parseInTimezone(dateTimeStr, timeZone) {
-        // dateTimeStr format: "YYYY-MM-DDTHH:mm:ss" or "YYYY-MM-DDTHH:mm:ss.sss"
-        const parts = dateTimeStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?/);
-        if (!parts) {
-            throw new Error(`Invalid datetime format: ${dateTimeStr}`);
+        try {
+            return dateFnsTz.zonedTimeToUtc(dateTimeStr, timeZone);
+        } catch (error) {
+            console.error('Failed to parse datetime in timezone:', dateTimeStr, timeZone, error);
+            return new Date(dateTimeStr);
         }
-
-        const [, year, month, day, hour, minute, second, ms = '0'] = parts;
-
-        // Create a date string that will be interpreted in the target timezone
-        // We'll use Intl.DateTimeFormat to get the offset for this specific date/time
-        const testDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
-
-        // Get the formatted string in the target timezone
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-            timeZoneName: 'short'
-        });
-
-        // Calculate offset by comparing UTC to timezone
-        // Create the intended time as if it were UTC
-        const utcDate = new Date(Date.UTC(
-            parseInt(year),
-            parseInt(month) - 1,
-            parseInt(day),
-            parseInt(hour),
-            parseInt(minute),
-            parseInt(second),
-            parseInt(ms)
-        ));
-
-        // Get what time it shows in the target timezone
-        const tzParts = formatter.formatToParts(utcDate);
-        const tzYear = parseInt(tzParts.find(p => p.type === 'year').value);
-        const tzMonth = parseInt(tzParts.find(p => p.type === 'month').value);
-        const tzDay = parseInt(tzParts.find(p => p.type === 'day').value);
-        const tzHour = parseInt(tzParts.find(p => p.type === 'hour').value);
-        const tzMinute = parseInt(tzParts.find(p => p.type === 'minute').value);
-        const tzSecond = parseInt(tzParts.find(p => p.type === 'second').value);
-
-        // Calculate the offset in milliseconds
-        const intendedTime = Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second), parseInt(ms));
-        const actualTime = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, tzMinute, tzSecond, parseInt(ms));
-        const offset = actualTime - utcDate.getTime();
-
-        // Apply the offset to get the correct UTC time
-        return new Date(intendedTime - offset);
     }
 
     // Update feeding intelligence UI
-    updateFeedingIntelligence() {
-        const intelligence = this.calculateFeedingIntelligence();
+    updateFeedingIntelligence(feedingData = null) {
+        const intelligence = feedingData
+            || this.analytics?.feedingIntelligence
+            || this.calculateFeedingIntelligence();
         const container = document.getElementById('feedingIntelligence');
 
         if (!container) {return;}
@@ -1973,8 +1912,10 @@ class BabyTracker {
     }
 
     // Update sleep quality UI
-    updateSleepQuality() {
-        const quality = this.calculateSleepQuality();
+    updateSleepQuality(sleepData = null) {
+        const quality = sleepData
+            || this.analytics?.sleepQuality
+            || this.calculateSleepQuality();
         const container = document.getElementById('sleepQuality');
 
         if (!container) {return;}
@@ -2374,8 +2315,10 @@ class BabyTracker {
     }
 
     // Update diaper health UI
-    updateDiaperHealth() {
-        const health = this.calculateDiaperHealth();
+    updateDiaperHealth(diaperData = null) {
+        const health = diaperData
+            || this.analytics?.diaperHealth
+            || this.calculateDiaperHealth();
         const container = document.getElementById('diaperHealth');
 
         if (!container) {return;}
@@ -2428,8 +2371,10 @@ class BabyTracker {
     }
 
     // Update smart alerts UI
-    updateSmartAlerts() {
-        const alerts = this.calculateSmartAlerts();
+    updateSmartAlerts(alertData = null) {
+        const alerts = alertData
+            || this.analytics?.smartAlerts
+            || this.calculateSmartAlerts();
         const container = document.getElementById('smartAlerts');
 
         if (!container) {return;}
